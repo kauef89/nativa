@@ -1,0 +1,44 @@
+/* 1. Camada Base do Tailwind (Reset) */
+@layer tailwind-base, primevue, tailwind-utilities;
+
+@layer tailwind-base {
+  @tailwind base;
+}
+
+@layer tailwind-utilities {
+  @tailwind components;
+  @tailwind utilities;
+}
+
+/* 2. Ajustes Globais e Fontes */
+body {
+    font-family: 'Nunito', sans-serif;
+    background-color: #09090b; /* Zinc 950 */
+    color: #e4e4e7; /* Zinc 200 */
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* 3. Garante que o App ocupe a tela toda (Crucial para o layout não quebrar) */
+html, body, #nativa-app {
+    height: 100%;
+    width: 100%;
+    overflow: hidden; /* Evita scroll duplo */
+}
+
+/* 4. Scrollbar Estilizada */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #18181b; /* surface-900 */
+}
+::-webkit-scrollbar-thumb {
+  background: #3f3f46; /* surface-700 */
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b; /* surface-600 */
+}
