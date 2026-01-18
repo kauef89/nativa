@@ -1,13 +1,15 @@
 <template>
   <div class="w-full h-full">
+    
     <pos-interface 
-        v-if="sessionStore.hasOpenSession" 
+        v-if="sessionStore.hasOpenSession && sessionStore.sessionType === 'table'" 
         @exit="handleExitSession" 
     />
     
     <div v-else class="w-full h-full flex items-center justify-center bg-surface-950">
         <table-grid />
     </div>
+
   </div>
 </template>
 

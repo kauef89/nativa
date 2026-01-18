@@ -47,6 +47,9 @@ class Nativa_Core {
 		require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-acf-fields.php';
 		require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-combo-cpt.php';
 		require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-combo-fields.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-rua-cpt.php'; // NOVO
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-bairro-cpt.php'; // NOVO
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-legacy-cpt.php';
 
 		// Carrega as APIs Oficiais
 		require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-menu-api.php';
@@ -54,12 +57,19 @@ class Nativa_Core {
         require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-orders-api.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-payment-api.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-tables-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-delivery-api.php'; // NOVO
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-profile-api.php'; // NOVO
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-debug-api.php'; // <--- ADICIONE
 
         // Carrega Frontend Loader
         require_once NATIVA_PLUGIN_DIR . 'includes/frontend/class-nativa-frontend-loader.php';
     }
 
 	private function define_hooks() {
+        // 0. Inicializa Pedidos da V1 para histórico
+        $legacy_cpt = new Nativa_Legacy_CPT();
+        $legacy_cpt->init();
+
         // 1. Inicializa CPTs e Campos
         $product_cpt = new Nativa_Product_CPT();
         $product_cpt->init();
@@ -75,6 +85,12 @@ class Nativa_Core {
         
         $combo_fields = new Nativa_Combo_Fields();
         $combo_fields->init();
+
+        $bairro_cpt = new Nativa_Bairro_CPT(); // NOVO
+        $bairro_cpt->init();
+
+        $rua_cpt = new Nativa_Rua_CPT(); // NOVO
+        $rua_cpt->init();
 
         // 2. Inicializa APIs (REST API)
         add_action( 'rest_api_init', function() {
@@ -98,6 +114,17 @@ class Nativa_Core {
             // API de Mesas
             $tables_api = new Nativa_Tables_API(); 
             $tables_api->register_routes();
+
+            // API de Bairros
+            $delivery_api = new Nativa_Delivery_API(); // NOVO
+            $delivery_api->register_routes();
+
+            // API de Clientes
+            $profile_api = new Nativa_Profile_API(); // NOVO
+            $profile_api->register_routes();
+
+            $debug = new Nativa_Debug_API(); // <--- ADICIONE
+            $debug->register_routes();       // <--- ADICIONE
         });
 
         // 3. Admin Page

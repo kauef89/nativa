@@ -89,7 +89,7 @@ class Nativa_Frontend_Loader {
             
             <link rel="preconnect" href="https://fonts.googleapis.com">
             <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-            <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet">
 
             <link rel="stylesheet" href="https://unpkg.com/primeicons@6.0.1/primeicons.css">
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -113,6 +113,7 @@ class Nativa_Frontend_Loader {
                     color: #e4e4e7; /* Zinc 200 */
                     font-family: 'Nunito', sans-serif;
                     -webkit-font-smoothing: antialiased;
+                    font-weight: 500; /* Define o peso base como Medium */
                 }
                 /* Loading Spinner Centralizado (antes do Vue carregar) */
                 #app-loading {

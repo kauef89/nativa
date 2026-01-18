@@ -2,9 +2,9 @@
   <Drawer 
     v-model:visible="store.isOpen" 
     position="right" 
-    class="!w-full md:!w-[450px] !bg-surface-900 !border-l !border-surface-800"
     :modal="true"
     :pt="{
+        root: { class: '!bg-surface-900 !border-l !border-surface-800 w-full md:w-[450px]' },
         header: { class: '!bg-surface-900 !border-b !border-surface-800 !px-6 !py-4' },
         content: { class: '!bg-surface-900 !p-0' },
         closeButton: { class: '!text-surface-300 hover:!text-white hover:!bg-surface-800' },

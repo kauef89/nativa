@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import api from "../services/api";
-import { notify } from "@/services/notify"; // <--- Import da Ponte
+import { notify } from "@/services/notify";
 
 export const useSessionStore = defineStore("session", {
   state: () => ({
@@ -17,6 +17,7 @@ export const useSessionStore = defineStore("session", {
 
   getters: {
     hasOpenSession: (state) => !!state.sessionId,
+
     // Getter útil para exibir no cabeçalho
     sessionLabel: (state) => {
       if (state.currentTable) return `Mesa ${state.currentTable}`;
@@ -26,8 +27,13 @@ export const useSessionStore = defineStore("session", {
   },
 
   actions: {
-    // Abre uma nova sessão (Mesa, Balcão ou Delivery)
-    async openSession(type, tableNumber = null, clientName = null) {
+    /**
+     * Abre uma nova sessão.
+     * @param {string} type - 'table', 'counter' ou 'delivery'
+     * @param {number|null} tableNumber - Número da mesa (se houver)
+     * @param {object|string|null} deliveryData - Objeto de endereço (Delivery) ou String de nome (Balcão)
+     */
+    async openSession(type, tableNumber = null, deliveryData = null) {
       this.isLoading = true;
       try {
         const payload = {
@@ -35,8 +41,13 @@ export const useSessionStore = defineStore("session", {
           table_number: tableNumber,
         };
 
-        if (clientName) {
-          payload.delivery_address_json = { name: clientName };
+        // LÓGICA HÍBRIDA: Aceita Objeto Completo (Delivery) ou String Simples (Balcão)
+        if (deliveryData && typeof deliveryData === "object") {
+          // Caso Delivery V2: Envia o objeto completo de endereço
+          payload.delivery_address_json = deliveryData;
+        } else if (deliveryData && typeof deliveryData === "string") {
+          // Caso Balcão/Legado: Envia apenas o nome envelopado
+          payload.delivery_address_json = { name: deliveryData };
         }
 
         const response = await api.post("/open-session", payload);
@@ -45,21 +56,26 @@ export const useSessionStore = defineStore("session", {
           this.sessionId = response.data.session_id;
           this.sessionType = type;
           this.currentTable = tableNumber;
-          this.clientName = clientName;
+
+          // Define o nome do cliente na memória para exibição
+          if (deliveryData && typeof deliveryData === "object") {
+            this.clientName = deliveryData.name;
+          } else {
+            this.clientName = deliveryData;
+          }
 
           this.fetchOrderSummary();
 
-          // Notificação de Sucesso via PrimeVue
+          // Notificação de Sucesso
           notify(
             "success",
             "Sessão Aberta",
-            `Venda iniciada #${this.sessionId}`
+            `Venda iniciada #${this.sessionId}`,
           );
           return true;
         }
       } catch (error) {
         console.error("Erro ao abrir sessão:", error);
-        // O interceptor da API já exibe o erro, mas se cair aqui por outro motivo:
         notify("error", "Erro", "Não foi possível iniciar a venda.");
         return false;
       } finally {
@@ -72,6 +88,10 @@ export const useSessionStore = defineStore("session", {
       this.isLoading = true;
       this.sessionId = sessionId;
       this.currentTable = tableNumber;
+
+      // CORREÇÃO CRUCIAL: Definir explicitamente o tipo como 'table'
+      // Isso garante que o TablesView saiba que deve mostrar o POS e não o mapa
+      this.sessionType = "table";
 
       // Aqui poderíamos buscar o nome do cliente se a API retornasse na listagem de mesas
       // Por enquanto, apenas carrega os itens
@@ -97,7 +117,7 @@ export const useSessionStore = defineStore("session", {
       }
     },
 
-    // Limpa o estado local ao sair da mesa
+    // Limpa o estado local ao sair da mesa ou finalizar
     leaveSession() {
       this.sessionId = null;
       this.sessionType = null;
