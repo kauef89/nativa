@@ -1,130 +1,179 @@
 import { defineStore } from "pinia";
 import api from "../services/api";
-import { notify } from "@/services/notify";
+import { notify } from "../services/notify";
+import router from "../router";
 
 export const useSessionStore = defineStore("session", {
   state: () => ({
     sessionId: null,
-    sessionType: null, // 'table', 'counter', 'delivery'
-    currentTable: null, // Só para mesas
-    clientName: null, // Nome do Cliente (Balcão/Delivery)
+    sessionType: null, // 'table', 'counter'
+    identifier: null,
+    accounts: ["Principal"],
+    currentAccount: "Principal",
+    items: [],
+    groupedItems: { Principal: [] },
+    totals: { total: 0, subtotal: 0, discount: 0 },
     isLoading: false,
-
-    // Itens e Totais
-    orderItems: [],
-    orderTotal: 0.0,
   }),
 
   getters: {
-    hasOpenSession: (state) => !!state.sessionId,
+    // CORREÇÃO: Getter que faltava.
+    // Retorna TRUE se tivermos um tipo definido (mesmo que o ID ainda seja null/lazy)
+    hasOpenSession: (state) => !!state.sessionType,
 
-    // Getter útil para exibir no cabeçalho
-    sessionLabel: (state) => {
-      if (state.currentTable) return `Mesa ${state.currentTable}`;
-      if (state.clientName) return `${state.clientName}`;
-      return "Venda Avulsa";
+    currentAccountItems: (state) =>
+      state.groupedItems[state.currentAccount] || [],
+    accountTotal: (state) => (accountName) => {
+      const items = state.groupedItems[accountName] || [];
+      return items.reduce((sum, item) => sum + parseFloat(item.line_total), 0);
     },
   },
 
   actions: {
-    /**
-     * Abre uma nova sessão.
-     * @param {string} type - 'table', 'counter' ou 'delivery'
-     * @param {number|null} tableNumber - Número da mesa (se houver)
-     * @param {object|string|null} deliveryData - Objeto de endereço (Delivery) ou String de nome (Balcão)
-     */
-    async openSession(type, tableNumber = null, deliveryData = null) {
+    async openSession(type, identifier) {
+      console.log("[NATIVA FRONT] openSession chamado", { type, identifier });
       this.isLoading = true;
       try {
-        const payload = {
-          type: type,
-          table_number: tableNumber,
-        };
+        // Reset do estado
+        this.sessionId = null;
+        this.sessionType = type;
+        this.identifier = identifier;
+        this.accounts = ["Principal"];
+        this.currentAccount = "Principal";
+        this.items = [];
+        this.groupedItems = { Principal: [] };
 
-        // LÓGICA HÍBRIDA: Aceita Objeto Completo (Delivery) ou String Simples (Balcão)
-        if (deliveryData && typeof deliveryData === "object") {
-          // Caso Delivery V2: Envia o objeto completo de endereço
-          payload.delivery_address_json = deliveryData;
-        } else if (deliveryData && typeof deliveryData === "string") {
-          // Caso Balcão/Legado: Envia apenas o nome envelopado
-          payload.delivery_address_json = { name: deliveryData };
+        // Verifica mesa se necessário
+        if (type === "table") {
+          await this.checkExistingSession(identifier);
         }
 
-        const response = await api.post("/open-session", payload);
-
-        if (response.data.success) {
-          this.sessionId = response.data.session_id;
-          this.sessionType = type;
-          this.currentTable = tableNumber;
-
-          // Define o nome do cliente na memória para exibição
-          if (deliveryData && typeof deliveryData === "object") {
-            this.clientName = deliveryData.name;
-          } else {
-            this.clientName = deliveryData;
-          }
-
-          this.fetchOrderSummary();
-
-          // Notificação de Sucesso
-          notify(
-            "success",
-            "Sessão Aberta",
-            `Venda iniciada #${this.sessionId}`,
-          );
-          return true;
-        }
-      } catch (error) {
-        console.error("Erro ao abrir sessão:", error);
-        notify("error", "Erro", "Não foi possível iniciar a venda.");
-        return false;
+        // Navegação
+        console.log("[NATIVA FRONT] Navegando para /pdv");
+        router.push("/pdv");
+      } catch (e) {
+        console.error("[NATIVA FRONT] Erro em openSession:", e);
       } finally {
         this.isLoading = false;
       }
     },
 
-    // Retoma uma sessão existente (ex: Clicar numa mesa ocupada no mapa)
-    async resumeSession(sessionId, tableNumber) {
-      this.isLoading = true;
+    async resumeSession(sessionId, identifier = null) {
       this.sessionId = sessionId;
-      this.currentTable = tableNumber;
-
-      // CORREÇÃO CRUCIAL: Definir explicitamente o tipo como 'table'
-      // Isso garante que o TablesView saiba que deve mostrar o POS e não o mapa
+      if (identifier) this.identifier = identifier;
       this.sessionType = "table";
-
-      // Aqui poderíamos buscar o nome do cliente se a API retornasse na listagem de mesas
-      // Por enquanto, apenas carrega os itens
-      await this.fetchOrderSummary();
-
-      this.isLoading = false;
+      await this.refreshSession();
+      router.push("/pdv");
     },
 
-    // Busca o extrato (itens lançados)
-    async fetchOrderSummary() {
+    async refreshSession() {
       if (!this.sessionId) return;
+      this.isLoading = true;
       try {
-        const response = await api.get("/session-items", {
-          params: { session_id: this.sessionId },
-        });
+        const res = await api.get(
+          `/session-items?session_id=${this.sessionId}`,
+        );
+        if (res.data.success) {
+          this.items = res.data.items;
+          this.accounts = res.data.accounts || ["Principal"];
+          this.groupedItems = res.data.grouped_items || { Principal: [] };
+          this.totals.total = res.data.total;
 
-        if (response.data.success) {
-          this.orderItems = response.data.items;
-          this.orderTotal = response.data.total;
+          if (!this.accounts.includes(this.currentAccount)) {
+            this.currentAccount = "Principal";
+          }
         }
-      } catch (error) {
-        console.error("Erro ao buscar conta:", error);
+      } catch (e) {
+        console.error("Erro refreshSession", e);
+        if (e.response && e.response.status === 404) {
+          this.sessionId = null; // Sessão expirou
+        }
+      } finally {
+        this.isLoading = false;
       }
     },
 
-    // Limpa o estado local ao sair da mesa ou finalizar
+    setAccount(accountName) {
+      if (this.accounts.includes(accountName)) {
+        this.currentAccount = accountName;
+      }
+    },
+
+    async createAccount(name, isCommand = false) {
+      if (!this.sessionId) return false;
+      try {
+        const res = await api.post("/create-account", {
+          session_id: this.sessionId,
+          name: name,
+          is_command: isCommand,
+        });
+        if (res.data.success) {
+          this.accounts = res.data.accounts;
+          this.currentAccount = name;
+          if (!this.groupedItems[name]) this.groupedItems[name] = [];
+          notify("success", "Conta Criada", `Conta '${name}' adicionada.`);
+          return true;
+        }
+      } catch (e) {
+        notify("error", "Erro", "Erro ao criar conta.");
+        return false;
+      }
+    },
+
+    async addItem(product, qty = 1, modifiers = [], subAccount = null) {
+      const targetAccount = subAccount || this.currentAccount;
+
+      const payload = {
+        session_id: this.sessionId || 0,
+        product_id: product.id,
+        qty,
+        modifiers,
+        sub_account: targetAccount,
+        table_number: !this.sessionId ? this.identifier : null,
+        type: this.sessionType || "table",
+      };
+
+      try {
+        const res = await api.post("/add-item", payload);
+        if (res.data.success) {
+          // Captura o ID da sessão criada (Lazy Creation)
+          if (res.data.session_id && !this.sessionId) {
+            this.sessionId = res.data.session_id;
+          }
+          await this.refreshSession();
+          return true;
+        }
+      } catch (e) {
+        console.error(e);
+        notify("error", "Erro", "Falha ao adicionar item.");
+      }
+    },
+
+    async checkExistingSession(tableNum) {
+      if (!tableNum) return;
+      try {
+        const res = await api.get("/tables-status");
+        if (res.data.success) {
+          const table = res.data.tables.find((t) => t.number == tableNum);
+          if (table && table.status === "occupied" && table.sessionId) {
+            this.sessionId = table.sessionId;
+            await this.refreshSession();
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
     leaveSession() {
       this.sessionId = null;
       this.sessionType = null;
-      this.currentTable = null;
-      this.clientName = null;
-      this.orderItems = [];
-      this.orderTotal = 0;
+      this.identifier = null;
+      this.accounts = ["Principal"];
+      this.currentAccount = "Principal";
+      this.items = [];
+      this.groupedItems = { Principal: [] };
+      this.totals = { total: 0, subtotal: 0, discount: 0 };
     },
   },
 });

@@ -2,27 +2,25 @@
   <Dialog 
     v-model:visible="isOpen" 
     :modal="true" 
-    :style="{ width: '600px' }" 
-    :breakpoints="{ '960px': '75vw', '640px': '95vw' }"
+    :position="displayMode === 'bottom' ? 'bottom' : 'center'"
+    :dismissableMask="true"
+    :style="displayMode === 'bottom' ? { width: '100%', margin: '0' } : { width: '600px' }"
+    :breakpoints="displayMode === 'bottom' ? null : { '960px': '75vw', '640px': '95vw' }"
     class="bg-surface-900"
-    :pt="{
-        root: { class: '!bg-surface-900 !border !border-surface-800 !rounded-2xl' },
-        header: { class: '!bg-surface-900 !border-b !border-surface-800 !p-5' },
-        content: { class: '!bg-surface-900 !p-0' },
-        footer: { class: '!bg-surface-900 !border-t !border-surface-800 !p-5' },
-        closeButton: { class: '!text-surface-400 hover:!text-white hover:!bg-surface-800' }
-    }"
+    :pt="ptOptions"
   >
     <template #header>
-        <span class="text-xl font-bold text-white">{{ product?.name }}</span>
+        <div v-if="displayMode === 'bottom'" class="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-surface-700 rounded-full"></div>
+        
+        <span class="text-xl font-bold text-white mt-2">{{ product?.name }}</span>
     </template>
 
-    <div v-if="product" class="flex flex-col h-full max-h-[70vh]">
+    <div v-if="product" class="flex flex-col h-full" :class="displayMode === 'bottom' ? 'max-h-[85vh]' : 'max-h-[70vh]'">
       
       <div class="relative w-full h-48 bg-surface-800 shrink-0">
          <img v-if="product.image" :src="product.image" class="w-full h-full object-cover opacity-80" />
          <div v-else class="flex items-center justify-center h-full text-surface-600">
-            <i class="pi pi-image text-5xl"></i>
+            <i class="pi fa-regular fa-image text-5xl"></i>
          </div>
          <div class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/90 to-transparent p-4 flex justify-between items-end">
             <span class="text-white text-sm font-bold uppercase tracking-wider">Preço Base</span>
@@ -42,7 +40,7 @@
                 <div class="flex items-center gap-2">
                     <Button 
                         v-if="hasSelection(group)" 
-                        icon="pi pi-eraser" 
+                        icon="pi fa-solid fa-eraser" 
                         text rounded 
                         class="!w-8 !h-8 !text-surface-400 hover:!text-white"
                         @click="clearGroup(group)"
@@ -60,7 +58,7 @@
                     :class="isSelected(group, item) ? 'bg-primary-600 text-white border-primary-500 shadow-lg shadow-primary-900/50' : 'bg-surface-900 text-surface-400 border-surface-800 hover:border-surface-600 hover:text-surface-200'"
                     @click="toggleSelection(group, item)"
                 >
-                    <i v-if="isSelected(group, item)" class="pi pi-check mr-2 text-xs"></i>
+                    <i v-if="isSelected(group, item)" class="pi fa-solid fa-check mr-2 text-xs"></i>
                     <span class="font-medium text-sm">{{ item.name }}</span>
                     <span v-if="calculateItemVisualPrice(group, item) > 0" class="ml-2 text-xs opacity-80 font-bold">
                         +{{ formatMoney(calculateItemVisualPrice(group, item)) }}
@@ -99,17 +97,17 @@
     </div>
 
     <template #footer>
-        <div class="flex justify-between items-center w-full">
+        <div class="flex justify-between items-center w-full pt-2">
             <div class="flex flex-col">
                 <span class="text-xs text-surface-400 uppercase font-bold">Total Final</span>
                 <span class="text-2xl font-bold text-primary-400">R$ {{ formatMoney(currentTotal) }}</span>
             </div>
             <Button 
-                :label="editingIndex !== null ? 'SALVAR ALTERAÇÕES' : 'ADICIONAR AO PEDIDO'" 
-                icon="pi pi-check" 
+                :label="editingIndex !== null ? 'SALVAR' : 'ADICIONAR'" 
+                icon="pi fa-solid fa-check" 
                 :disabled="!isValid" 
                 @click="confirmAdd"
-                class="!font-bold !bg-primary-600 hover:!bg-primary-500 !border-none !px-6 !py-3"
+                class="!font-bold !bg-primary-600 hover:!bg-primary-500 !border-none !px-8 !py-4 !text-lg !rounded-xl shadow-lg shadow-primary-900/50"
             />
         </div>
     </template>
@@ -120,6 +118,41 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useCartStore } from '@/stores/cart-store';
+import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
+import Tag from 'primevue/tag';
+import Checkbox from 'primevue/checkbox';
+import RadioButton from 'primevue/radiobutton';
+
+const props = defineProps({
+    visible: Boolean,
+    product: Object,
+    displayMode: { type: String, default: 'center' } // 'center' | 'bottom'
+});
+
+// Estilos Dinâmicos (Bottom Sheet vs Modal)
+const ptOptions = computed(() => {
+    const base = {
+        header: { class: '!bg-surface-900 !border-b !border-surface-800 !p-5 relative' },
+        content: { class: '!bg-surface-900 !p-0' },
+        footer: { class: '!bg-surface-900 !border-t !border-surface-800 !p-5 !pb-8' }, // pb-8 para safe area do iPhone
+        closeButton: { class: '!text-surface-400 hover:!text-white hover:!bg-surface-800' }
+    };
+
+    if (props.displayMode === 'bottom') {
+        return {
+            ...base,
+            root: { class: '!bg-surface-900 !border-t !border-surface-700 !rounded-t-3xl !shadow-[0_-10px_40px_rgba(0,0,0,0.5)]' },
+            mask: { class: '!bg-black/80 backdrop-blur-sm' }
+        };
+    }
+
+    return {
+        ...base,
+        root: { class: '!bg-surface-900 !border !border-surface-800 !rounded-2xl' },
+        mask: { class: '!bg-black/60 backdrop-blur-sm' }
+    };
+});
 
 const cartStore = useCartStore();
 const isOpen = ref(false);
@@ -159,6 +192,7 @@ const open = (p, callback = null, editIdx = null, existingSelections = null) => 
 const clearGroup = (group) => { if (Array.isArray(selections.value[group.id])) selections.value[group.id] = []; else selections.value[group.id] = null; };
 const hasSelection = (group) => { const sel = selections.value[group.id]; return Array.isArray(sel) ? sel.length > 0 : !!sel; };
 const isSelected = (group, item) => { const sel = selections.value[group.id]; return Array.isArray(sel) ? sel.some(i => i.name === item.name) : (sel && sel.name === item.name); };
+
 const toggleSelection = (group, item) => {
   const list = selections.value[group.id];
   const idx = list.findIndex(i => i.name === item.name);
@@ -168,6 +202,7 @@ const toggleSelection = (group, item) => {
     list.push(item);
   }
 };
+
 const calculateItemVisualPrice = (group, item) => {
   let cost = parseFloat(item.price || 0);
   if (!isIngredientGroup(group)) return cost;
@@ -180,6 +215,7 @@ const calculateItemVisualPrice = (group, item) => {
   if (group.free_limit > 0 && currentList.length >= group.free_limit) cost += parseFloat(group.increment || 0);
   return cost;
 };
+
 const currentTotal = computed(() => {
   let total = basePrice.value;
   for (const key in selections.value) {
@@ -202,6 +238,7 @@ const currentTotal = computed(() => {
   }
   return total;
 });
+
 const getGroupSubtitle = (g) => {
   if (g.type === 'opcao') return 'ESCOLHA 1 OPÇÃO';
   let texts = [];
@@ -210,18 +247,21 @@ const getGroupSubtitle = (g) => {
   if (g.free_limit > 0) texts.push(`GRÁTIS: ${g.free_limit}`);
   return texts.join(' • ') || 'OPCIONAL';
 };
+
 const validateGroup = (g) => {
   const sel = selections.value[g.id];
   if (!sel) return g.min === 0;
   if (Array.isArray(sel)) return sel.length >= g.min;
   return true;
 };
+
 const getGroupStatus = (g) => {
   if (validateGroup(g)) return 'OK';
   const sel = selections.value[g.id];
   const count = Array.isArray(sel) ? sel.length : (sel ? 1 : 0);
   return `FALTAM ${g.min - count}`;
 };
+
 const isValid = computed(() => productGroups.value.every(g => validateGroup(g)));
 
 const confirmAdd = () => {

@@ -1,10 +1,9 @@
 <?php
 /**
- * Tradutor de Sessão (Model)
- * Responsável por conversar com a tabela 'wp_nativa_sessions'
+ * Model: Nativa Session
+ * Gerencia as sessões (Mesas, Comandas, Delivery) e suas sub-contas.
  */
 
-// Segurança: Se alguém tentar abrir o arquivo direto pelo navegador, o sistema bloqueia.
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
@@ -15,92 +14,120 @@ class Nativa_Session {
 
     public function __construct() {
         global $wpdb;
-        // Define o nome da tabela. Se seu WP usa prefixo 'wp_', vira 'wp_nativa_sessions'
         $this->table_name = $wpdb->prefix . 'nativa_sessions';
     }
 
-    /**
-     * FUNÇÃO: Criar Nova Sessão
-     * Usada quando: Cliente senta na mesa ou abre o app de delivery.
-     */
-    public function create( $data ) {
+    public function init() {
+        $this->create_table();
+    }
+
+    public function create_table() {
         global $wpdb;
+        
+        // Verifica se a tabela já existe
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$this->table_name'") === $this->table_name;
 
-        // Regra de Negócio: Não pode criar sem dizer o tipo (mesa, delivery, etc)
-        if ( empty( $data['type'] ) ) {
-            return new WP_Error( 'erro_sistema', 'O tipo de sessão é obrigatório.' );
+        if ( ! $table_exists ) {
+            // Se NÃO existe, cria do zero usando dbDelta
+            $charset_collate = $wpdb->get_charset_collate();
+            $sql = "CREATE TABLE $this->table_name (
+                id bigint(20) NOT NULL AUTO_INCREMENT,
+                type varchar(50) NOT NULL,
+                table_number int(11) DEFAULT NULL,
+                client_name varchar(255) DEFAULT NULL,
+                status varchar(50) DEFAULT 'open',
+                delivery_address_json text DEFAULT NULL,
+                accounts_json text DEFAULT NULL,
+                created_at datetime DEFAULT CURRENT_TIMESTAMP,
+                updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY  (id)
+            ) $charset_collate;";
+
+            require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+            dbDelta( $sql );
+        } else {
+            // Se JÁ existe, fazemos apenas ALTER TABLE manuais para evitar erro de Foreign Key do dbDelta
+            
+            // 1. Adiciona accounts_json
+            $col_accounts = $wpdb->get_results( "SHOW COLUMNS FROM $this->table_name LIKE 'accounts_json'" );
+            if ( empty( $col_accounts ) ) {
+                $wpdb->query( "ALTER TABLE $this->table_name ADD COLUMN accounts_json text DEFAULT NULL" );
+            }
+            
+            // 2. Adiciona client_name
+            $col_client = $wpdb->get_results( "SHOW COLUMNS FROM $this->table_name LIKE 'client_name'" );
+            if ( empty( $col_client ) ) {
+                $wpdb->query( "ALTER TABLE $this->table_name ADD COLUMN client_name varchar(255) DEFAULT NULL" );
+            }
         }
+    }
 
-        // Prepara os dados padrão
-        $defaults = array(
-            'status'           => 'open', // Começa aberta
-            'created_at'       => current_time( 'mysql' ), // Hora de agora
-            'delivery_address_json' => null,
-            'table_number'     => null,
-            'customer_user_id' => null
+    public function open( $type, $table_number = null, $delivery_data = null ) {
+        global $wpdb;
+        
+        $data = array(
+            'type' => $type,
+            'table_number' => $table_number,
+            'client_name' => is_array($delivery_data) ? ($delivery_data['name'] ?? null) : $delivery_data,
+            'status' => 'open',
+            'delivery_address_json' => is_array($delivery_data) ? json_encode($delivery_data) : null,
+            'accounts_json' => json_encode(['Principal']) 
         );
 
-        // Junta o que veio do sistema com os padrões
-        $args = wp_parse_args( $data, $defaults );
-
-        // Se tiver endereço (delivery), transforma em texto JSON para o banco entender
-        if ( ! empty( $args['delivery_address_json'] ) && is_array( $args['delivery_address_json'] ) ) {
-            $args['delivery_address_json'] = json_encode( $args['delivery_address_json'], JSON_UNESCAPED_UNICODE );
-        }
-
-        // Insere no Banco de Dados
-        $inseriu = $wpdb->insert(
-            $this->table_name,
-            $args
-        );
-
-        if ( ! $inseriu ) {
-            return new WP_Error( 'erro_banco', 'Erro ao salvar sessão: ' . $wpdb->last_error );
-        }
-
-        // Retorna o ID da sessão criada (Ex: Sessão #105)
+        $wpdb->insert( $this->table_name, $data );
         return $wpdb->insert_id;
     }
 
-    /**
-     * FUNÇÃO: Buscar Sessão
-     * Usada para ler os dados de uma mesa ou pedido
-     */
-    public function get( $id ) {
+    public function close( $session_id ) {
         global $wpdb;
-        
-        // Busca a linha pelo ID
-        $query = $wpdb->prepare( "SELECT * FROM {$this->table_name} WHERE id = %d", $id );
-        $resultado = $wpdb->get_row( $query );
-
-        // Se achou, destransforma o endereço JSON de volta para Array pro PHP usar
-        if ( $resultado && $resultado->delivery_address_json ) {
-            $resultado->delivery_address_json = json_decode( $resultado->delivery_address_json, true );
-        }
-
-        return $resultado;
+        return $wpdb->update( 
+            $this->table_name, 
+            array( 'status' => 'closed' ), 
+            array( 'id' => $session_id ) 
+        );
     }
 
-    /**
-     * FUNÇÃO: Atualizar Sessão
-     * Usada para fechar a conta ou mudar status
-     */
-    public function update( $id, $dados ) {
+    public function get( $id ) {
         global $wpdb;
+        return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $this->table_name WHERE id = %d", $id ) );
+    }
+
+    public function add_account( $session_id, $account_name ) {
+        global $wpdb;
+        $session = $this->get( $session_id );
+        if ( ! $session ) return false;
+
+        // CORREÇÃO: Tratamento para valor nulo
+        $json = !empty($session->accounts_json) ? $session->accounts_json : '[]';
+        $accounts = json_decode( $json, true );
         
-        // Se estiver mandando endereço, codifica pra JSON
-        if ( isset( $dados['delivery_address_json'] ) && is_array( $dados['delivery_address_json'] ) ) {
-            $dados['delivery_address_json'] = json_encode( $dados['delivery_address_json'], JSON_UNESCAPED_UNICODE );
+        if ( ! is_array( $accounts ) ) $accounts = ['Principal'];
+
+        if ( ! in_array( $account_name, $accounts ) ) {
+            $accounts[] = $account_name;
+            $wpdb->update( 
+                $this->table_name, 
+                array( 'accounts_json' => json_encode( $accounts ) ), 
+                array( 'id' => $session_id ) 
+            );
         }
+        return $accounts;
+    }
+
+    public function is_command_in_use( $command_number, $ignore_session_id = null ) {
+        global $wpdb;
+        $sessions = $wpdb->get_results( "SELECT id, accounts_json FROM $this->table_name WHERE status = 'open'" );
         
-        // Regra de Negócio: Se o status for "Pago" ou "Cancelado", marca a hora do fechamento
-        if ( isset( $dados['status'] ) && ( $dados['status'] == 'paid' || $dados['status'] == 'cancelled' ) ) {
-            if ( ! isset( $dados['closed_at'] ) ) {
-                $dados['closed_at'] = current_time( 'mysql' );
+        foreach ( $sessions as $sess ) {
+            if ( $ignore_session_id && $sess->id == $ignore_session_id ) continue;
+            
+            $json = !empty($sess->accounts_json) ? $sess->accounts_json : '[]';
+            $accounts = json_decode( $json, true );
+            
+            if ( is_array( $accounts ) && in_array( (string)$command_number, $accounts ) ) {
+                return $sess->id;
             }
         }
-
-        // Executa a atualização
-        return $wpdb->update( $this->table_name, $dados, array( 'id' => $id ) );
+        return false;
     }
 }

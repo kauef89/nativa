@@ -57,7 +57,7 @@
       <div class="mt-auto">
         <Button 
             label="CONFIRMAR PAGAMENTO" 
-            icon="pi pi-check-circle" 
+            icon="pi fa-solid fa-check-circle" 
             class="w-full h-14 font-bold text-lg !bg-green-600 hover:!bg-green-500 !border-none !text-white"
             :loading="isProcessing"
             :disabled="!selectedMethodId || sessionStore.orderTotal <= 0"
@@ -99,7 +99,7 @@ const fetchPaymentMethods = async () => {
     if (response.data.success) {
         paymentMethods.value = response.data.methods.map(m => ({
             ...m,
-            icon: m.icon.includes('money') ? 'pi pi-money-bill' : 'pi pi-credit-card'
+            icon: m.icon.includes('money') ? 'pi fa-solid fa-money-bill-wave' : 'pi fa-solid fa-credit-card'
         }));
     }
   } catch (error) {

@@ -3,7 +3,7 @@
  * Plugin Name:       Nativa
  * Plugin URI:        https://pastelarianativa.com.br
  * Description:       Núcleo do Sistema Comercial e PDV (V2). Gerencia Pedidos, Mesas, Delivery e Integrações de Hardware.
- * Version:           2.0.0
+ * Version:           2.0.2
  * Author:            Kauê Friedrich
  * Author URI:        https://pastelarianativa.com.br
  * Text Domain:       nativa
@@ -13,64 +13,78 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-	exit;
+    exit;
 }
 
-define( 'NATIVA_VERSION', '2.0.0' );
+define( 'NATIVA_VERSION', '2.0.2' );
 define( 'NATIVA_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NATIVA_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'NATIVA_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
 class Nativa_Core {
 
-	private static $instance = null;
+    private static $instance = null;
 
-	public static function get_instance() {
-		if ( null === self::$instance ) {
-			self::$instance = new self();
-		}
-		return self::$instance;
-	}
-
-	private function __construct() {
-		$this->load_dependencies();
-		$this->define_hooks();
-	}
-
-	private function load_dependencies() {
-		// Carrega os Models
-		require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-session.php';
-		require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-order-item.php';
-		require_once NATIVA_PLUGIN_DIR . 'includes/admin/class-nativa-admin-page.php';
-		require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-payment-method.php';
-		require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-product-cpt.php';
-		require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-acf-fields.php';
-		require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-combo-cpt.php';
-		require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-combo-fields.php';
-        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-rua-cpt.php'; // NOVO
-        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-bairro-cpt.php'; // NOVO
-        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-legacy-cpt.php';
-
-		// Carrega as APIs Oficiais
-		require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-menu-api.php';
-		require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-combo-api.php';
-        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-orders-api.php';
-        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-payment-api.php';
-        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-tables-api.php';
-        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-delivery-api.php'; // NOVO
-        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-profile-api.php'; // NOVO
-        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-debug-api.php'; // <--- ADICIONE
-
-        // Carrega Frontend Loader
-        require_once NATIVA_PLUGIN_DIR . 'includes/frontend/class-nativa-frontend-loader.php';
+    public static function get_instance() {
+        if ( null === self::$instance ) {
+            self::$instance = new self();
+        }
+        return self::$instance;
     }
 
-	private function define_hooks() {
-        // 0. Inicializa Pedidos da V1 para histórico
+    private function __construct() {
+        $this->load_dependencies();
+        $this->define_hooks();
+    }
+
+    private function load_dependencies() {
+        // --- Models (Acesso a Dados) ---
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-session.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-order-item.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-cash-register.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-stock.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-payment-method.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-product-cpt.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-acf-fields.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-combo-cpt.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-combo-fields.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-rua-cpt.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-bairro-cpt.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-legacy-cpt.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-mesa-cpt.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-mesa-fields.php';
+        
+        // --- Classes Utilitárias e Configuração ---
+        require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-onesignal.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-roles.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/admin/class-nativa-admin-page.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/frontend/class-nativa-frontend-loader.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-gov-api.php';
+
+        // --- APIs REST (Endpoints) ---
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-menu-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-combo-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-pos-controller.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-web-order-controller.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-dashboard-controller.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-payment-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-tables-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-delivery-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-profile-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-debug-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-cash-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-products-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-team-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-settings-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-auth-controller.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-onboarding-api.php';
+    }
+
+    private function define_hooks() {
+        // 1. Inicializa CPTs, Campos e Roles (Isso deve rodar sempre)
         $legacy_cpt = new Nativa_Legacy_CPT();
         $legacy_cpt->init();
 
-        // 1. Inicializa CPTs e Campos
         $product_cpt = new Nativa_Product_CPT();
         $product_cpt->init();
 
@@ -86,64 +100,102 @@ class Nativa_Core {
         $combo_fields = new Nativa_Combo_Fields();
         $combo_fields->init();
 
-        $bairro_cpt = new Nativa_Bairro_CPT(); // NOVO
+        $bairro_cpt = new Nativa_Bairro_CPT();
         $bairro_cpt->init();
 
-        $rua_cpt = new Nativa_Rua_CPT(); // NOVO
+        $rua_cpt = new Nativa_Rua_CPT();
         $rua_cpt->init();
+
+        $mesa_cpt = new Nativa_Mesa_CPT();
+        $mesa_cpt->init();
+
+        $mesa_fields = new Nativa_Mesa_Fields();
+        $mesa_fields->init();
+
+        // NOTA: Removemos Session, Cash, Stock e OrderItem daqui.
+        // Eles criam tabelas no init() e não devem rodar a cada request (Causa do Erro DB).
+        // A criação das tabelas agora é exclusiva do método activate().
+
+        Nativa_Roles::init();
 
         // 2. Inicializa APIs (REST API)
         add_action( 'rest_api_init', function() {
             
-            // API Menu (Cardápio)
-            $menu_api = new Nativa_Menu_API();
-            $menu_api->register_routes();
+            $apis = [
+                new Nativa_Menu_API(),
+                new Nativa_Combo_API(),
+                new Nativa_POS_Controller(),
+                new Nativa_Web_Order_Controller(),
+                new Nativa_Dashboard_Controller(),
+                new Nativa_Payment_API(),
+                new Nativa_Tables_API(),
+                new Nativa_Delivery_API(),
+                new Nativa_Profile_API(),
+                new Nativa_Debug_API(),
+                new Nativa_Cash_API(),
+                new Nativa_Products_API(),
+                new Nativa_Team_API(),
+                new Nativa_Settings_API(),
+                new Nativa_Auth_Controller(),
+                new Nativa_Onboarding_API()
+            ];
 
-            // API Combos
-            $combo_api = new Nativa_Combo_API();
-            $combo_api->register_routes();
-
-            // API de Pedidos (CORRIGIDO PARA O NOME NOVO)
-            $orders_api = new Nativa_Orders_API();
-            $orders_api->register_routes();
-
-            // API de Pagamentos (CORRIGIDO PARA O NOME NOVO)
-            $payment_api = new Nativa_Payment_API();
-            $payment_api->register_routes();
-
-            // API de Mesas
-            $tables_api = new Nativa_Tables_API(); 
-            $tables_api->register_routes();
-
-            // API de Bairros
-            $delivery_api = new Nativa_Delivery_API(); // NOVO
-            $delivery_api->register_routes();
-
-            // API de Clientes
-            $profile_api = new Nativa_Profile_API(); // NOVO
-            $profile_api->register_routes();
-
-            $debug = new Nativa_Debug_API(); // <--- ADICIONE
-            $debug->register_routes();       // <--- ADICIONE
+            foreach ($apis as $api) {
+                $api->register_routes();
+            }
         });
 
-        // 3. Admin Page
+        // 3. Injeta Configuração do OneSignal no Frontend
+        add_action( 'wp_enqueue_scripts', function() {
+            $app_id = defined('NATIVA_ONESIGNAL_APP_ID') ? NATIVA_ONESIGNAL_APP_ID : '';
+            
+            wp_localize_script( 'nativa-pdv-app', 'nativaOneSignal', array(
+                'app_id' => $app_id
+            ));
+        }, 20 );
+
+        // 4. Páginas e Frontend
         $admin_page = new Nativa_Admin_Page();
         $admin_page->init();
 
-        // 4. Frontend App (/pdv)
         $frontend = new Nativa_Frontend_Loader();
         $frontend->init();
     }
     
+    /**
+     * Roda apenas ao ATIVAR o plugin no painel.
+     * Cria/Atualiza as tabelas do banco.
+     */
     public static function activate() {
-        // Ativação (criação de tabelas, etc)
+        // Carrega dependências manualmente pois a classe pode não ter instanciado ainda
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-session.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-order-item.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-cash-register.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-stock.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-roles.php';
+        
+        // Cria Tabelas (dbDelta)
+        $session = new Nativa_Session();
+        $session->create_table();
+        
+        $items = new Nativa_Order_Item();
+        $items->create_table();
+
+        $cash = new Nativa_Cash_Register();
+        $cash->create_tables(); // Chama direto o criador, não o init
+
+        $stock = new Nativa_Stock();
+        $stock->create_table(); // Chama direto o criador
+        
+        // Configurações
+        Nativa_Roles::add_custom_roles();
+        flush_rewrite_rules();
     }
 }
 
 register_activation_hook( __FILE__, array( 'Nativa_Core', 'activate' ) );
 
 function run_nativa() {
-	$plugin = Nativa_Core::get_instance();
+    $plugin = Nativa_Core::get_instance();
 }
 run_nativa();

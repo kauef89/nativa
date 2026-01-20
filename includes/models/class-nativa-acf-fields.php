@@ -18,10 +18,10 @@ class Nativa_ACF_Fields {
             return;
         }
 
-        // GRUPO 1: PRODUTO (Preço e Vínculo)
+        // GRUPO 1: PRODUTO (Preço, Vínculo e ESTOQUE)
         acf_add_local_field_group( array(
             'key' => 'group_nativa_produto_data',
-            'title' => 'Dados do Produto (V1)',
+            'title' => 'Dados do Produto (V1 + V2)',
             'fields' => array(
                 array(
                     'key' => 'field_produto_preco',
@@ -29,10 +29,41 @@ class Nativa_ACF_Fields {
                     'name' => 'produto_preco', // Chave V1
                     'type' => 'number',
                     'prepend' => 'R$',
+                    'wrapper' => array('width' => '50'),
                 ),
                 array(
+                    'key' => 'field_produto_promocional',
+                    'label' => 'Preço Promocional (R$)',
+                    'name' => 'produto_preco_promocional',
+                    'type' => 'number',
+                    'prepend' => 'R$',
+                    'wrapper' => array('width' => '50'),
+                ),
+                // --- NOVOS CAMPOS DE ESTOQUE ---
+                array(
+                    'key' => 'field_estoque_ativo',
+                    'label' => 'Gerenciar Estoque?',
+                    'name' => 'nativa_estoque_ativo',
+                    'type' => 'true_false',
+                    'ui' => 1,
+                    'message' => 'Sim, controlar quantidade deste item',
+                ),
+                array(
+                    'key' => 'field_estoque_qtd',
+                    'label' => 'Quantidade Atual',
+                    'name' => 'nativa_estoque_qtd',
+                    'type' => 'number',
+                    'default_value' => 0,
+                    'conditional_logic' => array(
+                        array(
+                            array('field' => 'field_estoque_ativo', 'operator' => '==', 'value' => '1'),
+                        ),
+                    ),
+                ),
+                // -------------------------------
+                array(
                     'key' => 'field_produto_disponibilidade',
-                    'label' => 'Disponibilidade',
+                    'label' => 'Disponibilidade (Manual)',
                     'name' => 'produto_disponibilidade',
                     'type' => 'select',
                     'choices' => array(
@@ -41,6 +72,7 @@ class Nativa_ACF_Fields {
                         'oculto' => 'Oculto',
                     ),
                     'default_value' => 'disponivel',
+                    'instructions' => 'Se o estoque estiver ativo e zerado, o sistema tratará como Esgotado automaticamente.',
                 ),
                 // O Campo de Conexão com Adicionais
                 array(
@@ -48,7 +80,7 @@ class Nativa_ACF_Fields {
                     'label' => 'Grupos de Adicionais',
                     'name' => 'produto_grupos_adicionais', // Chave V1
                     'type' => 'relationship',
-                    'post_type' => array( 'nativa_adic_grupo' ), // Aponta para o slug correto
+                    'post_type' => array( 'nativa_adic_grupo' ), 
                     'return_format' => 'id',
                 ),
             ),

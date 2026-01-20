@@ -3,8 +3,9 @@ import { createPinia } from "pinia";
 import App from "./App.vue";
 import router from "./router";
 
-// 1. CSS Global (Tailwind)
+// 1. CSS Global (Tailwind) e overrides
 import "./style.css";
+import "./overrides.css";
 
 // 2. Ícones
 import "@fortawesome/fontawesome-free/css/all.css";

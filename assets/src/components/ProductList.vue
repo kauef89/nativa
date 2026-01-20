@@ -21,7 +21,7 @@
                 <span class="font-bold text-sm">{{ cat.name }}</span>
                 
                 <i v-if="cat.children && cat.children.length > 0" 
-                   class="pi pi-chevron-down text-xs transition-transform duration-300"
+                   class="pi fa-solid fa-chevron-down text-xs transition-transform duration-300"
                    :class="expandedParents.includes(cat.id) ? 'rotate-180 text-primary-500' : ''"
                 ></i>
             </div>
@@ -35,7 +35,7 @@
                     class="cursor-pointer py-2 px-3 rounded-md text-sm transition-colors flex items-center whitespace-nowrap"
                     :class="(activeTab === cat.id && !isChildActive) ? 'text-surface-900 font-bold bg-primary-500' : 'text-surface-400 hover:text-surface-200'"
                 >
-                    <i class="pi pi-th-large text-xs mr-2 opacity-70"></i> Ver Todos
+                    <i class="pi fa-solid fa-border-all text-xs mr-2 opacity-70"></i> Ver Todos
                 </div>
 
                 <div 
@@ -75,7 +75,7 @@
                     <div class="w-16 h-16 rounded-lg bg-surface-800 flex-none overflow-hidden relative border border-surface-700">
                         <img v-if="product.image" :src="product.image" class="w-full h-full object-cover">
                         <div v-else class="flex items-center justify-center h-full text-surface-600">
-                            <i class="pi pi-image text-xl"></i>
+                            <i class="pi fa-regular fa-image text-xl"></i>
                         </div>
                     </div>
 
@@ -93,7 +93,7 @@
                             R$ {{ formatPrice(product.price) }}
                         </span>
                         <button class="w-10 h-10 rounded-full bg-surface-950 border border-surface-700 flex items-center justify-center text-surface-400 group-hover:bg-primary-500 group-hover:border-primary-500 group-hover:text-surface-900 transition-all shadow-sm">
-                            <i class="pi pi-plus text-sm font-bold"></i>
+                            <i class="pi fa-solid fa-plus text-sm font-bold"></i>
                         </button>
                     </div>
                 </div>

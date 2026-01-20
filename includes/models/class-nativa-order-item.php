@@ -1,7 +1,7 @@
 <?php
 /**
- * Model: Item do Pedido
- * Gerencia a tabela wp_nativa_order_items e wp_nativa_sub_accounts
+ * Model: Nativa Order Item
+ * Gerencia os itens dentro de uma sessão.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -10,110 +10,106 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Nativa_Order_Item {
 
-    private $table_items;
-    private $table_sub_accounts;
+    private $table_name;
 
     public function __construct() {
         global $wpdb;
-        $this->table_items = $wpdb->prefix . 'nativa_order_items';
-        $this->table_sub_accounts = $wpdb->prefix . 'nativa_sub_accounts';
+        $this->table_name = $wpdb->prefix . 'nativa_order_items';
     }
 
-    /**
-     * Adiciona um item à Sessão
-     */
-    public function add_item( $session_id, $product_id, $qty = 1, $modifiers = null, $sub_account_name = 'Principal' ) {
+    public function init() {
+        $this->create_table();
+    }
+
+    public function create_table() {
         global $wpdb;
 
-        // 1. Garante que existe uma Sub-conta (Comanda)
-        $sub_account_id = $this->ensure_sub_account( $session_id, $sub_account_name );
-        if ( is_wp_error( $sub_account_id ) ) {
-            return $sub_account_id;
-        }
+        // Verifica se a tabela já existe
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$this->table_name'") === $this->table_name;
 
-        // 2. Busca dados do Produto
+        if ( ! $table_exists ) {
+            // Cria do zero
+            $charset_collate = $wpdb->get_charset_collate();
+            $sql = "CREATE TABLE $this->table_name (
+                id bigint(20) NOT NULL AUTO_INCREMENT,
+                session_id bigint(20) NOT NULL,
+                product_id bigint(20) NOT NULL,
+                product_name varchar(255) NOT NULL,
+                quantity int(11) NOT NULL DEFAULT 1,
+                unit_price decimal(10,2) NOT NULL DEFAULT 0.00,
+                modifiers_json text DEFAULT NULL,
+                status varchar(50) DEFAULT 'pending',
+                sub_account varchar(100) DEFAULT 'Principal',
+                created_at datetime DEFAULT CURRENT_TIMESTAMP,
+                updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY  (id),
+                KEY session_id (session_id)
+            ) $charset_collate;";
+
+            require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+            dbDelta( $sql );
+        } else {
+            // Se já existe, apenas garante que a coluna sub_account exista
+            // evitando erro de FK no session_id
+            $column_check = $wpdb->get_results( "SHOW COLUMNS FROM $this->table_name LIKE 'sub_account'" );
+            if ( empty( $column_check ) ) {
+                $wpdb->query( "ALTER TABLE $this->table_name ADD COLUMN sub_account varchar(100) DEFAULT 'Principal'" );
+            }
+        }
+    }
+
+    public function add_item( $session_id, $product_id, $qty = 1, $modifiers = null, $sub_account = 'Principal' ) {
+        global $wpdb;
+
         $product = get_post( $product_id );
-        if ( ! $product ) {
-            return new WP_Error( 'product_not_found', 'Produto não encontrado.' );
-        }
+        if ( ! $product ) return new WP_Error( 'invalid_product', 'Produto não encontrado.' );
 
-        // --- CORREÇÃO AQUI: Prioridade para os campos do Nativa V1 ---
-        $price = get_field( 'produto_preco', $product_id ); // Campo principal
+        $price = get_post_meta( $product_id, 'price', true ) ?: get_post_meta( $product_id, 'produto_preco', true );
         
-        // Fallbacks (caso o campo principal falhe)
-        if ( ! $price ) $price = get_field( 'price', $product_id );
-        if ( ! $price ) $price = get_post_meta( $product_id, 'preco', true );
-        if ( ! $price ) $price = get_post_meta( $product_id, '_price', true ); // WooCommerce
-        
-        // Garante formato decimal
-        $price = floatval( $price ); 
-
-        // 3. Modificadores JSON
-        $modifiers_json = null;
-        if ( ! empty( $modifiers ) ) {
-            $modifiers_json = json_encode( $modifiers, JSON_UNESCAPED_UNICODE );
-        }
-
-        // 4. Insere
-        $inserted = $wpdb->insert(
-            $this->table_items,
-            array(
-                'session_id'     => $session_id,
-                'sub_account_id' => $sub_account_id,
-                'product_id'     => $product_id,
-                'product_name'   => $product->post_title,
-                'unit_price'     => $price,
-                'quantity'       => $qty,
-                'modifiers_json' => $modifiers_json,
-                'status'         => 'pending',
-                'created_at'     => current_time( 'mysql' )
-            )
+        $data = array(
+            'session_id'   => $session_id,
+            'product_id'   => $product_id,
+            'product_name' => $product->post_title,
+            'quantity'     => $qty,
+            'unit_price'   => $price,
+            'modifiers_json' => $modifiers ? json_encode( $modifiers ) : null,
+            'status'       => 'pending',
+            'sub_account'  => $sub_account 
         );
 
-        if ( ! $inserted ) {
-            return new WP_Error( 'db_error', 'Erro ao inserir item: ' . $wpdb->last_error );
-        }
-
+        $wpdb->insert( $this->table_name, $data );
         return $wpdb->insert_id;
     }
 
-    /**
-     * Busca todos os itens de uma sessão
-     */
     public function get_items_by_session( $session_id ) {
         global $wpdb;
-        
-        $query = $wpdb->prepare( 
-            "SELECT i.*, s.name as sub_account_name 
-             FROM {$this->table_items} i
-             LEFT JOIN {$this->table_sub_accounts} s ON i.sub_account_id = s.id
-             WHERE i.session_id = %d 
-             ORDER BY i.created_at DESC", 
+        return $wpdb->get_results( $wpdb->prepare( 
+            "SELECT * FROM $this->table_name WHERE session_id = %d AND status != 'cancelled'", 
             $session_id 
-        );
-
-        return $wpdb->get_results( $query );
+        ) );
     }
 
-    /**
-     * Verifica/Cria Sub-conta
-     */
-    private function ensure_sub_account( $session_id, $name ) {
+    public function transfer_items( $item_ids, $target_session_id, $target_account ) {
         global $wpdb;
 
-        $query = $wpdb->prepare( 
-            "SELECT id FROM {$this->table_sub_accounts} WHERE session_id = %d AND name = %s LIMIT 1", 
-            $session_id, $name 
-        );
-        $exists = $wpdb->get_var( $query );
+        if ( empty($item_ids) || !is_array($item_ids) ) return false;
 
-        if ( $exists ) return $exists;
+        $data = array( 'sub_account' => $target_account );
+        
+        if ( $target_session_id ) {
+            $data['session_id'] = $target_session_id;
+        }
 
-        $inserted = $wpdb->insert(
-            $this->table_sub_accounts,
-            array( 'session_id' => $session_id, 'name' => $name )
-        );
+        $ids_sanitized = implode( ',', array_map( 'intval', $item_ids ) );
+        
+        $set_sql = [];
+        foreach($data as $col => $val) {
+            $set_sql[] = "$col = '" . esc_sql($val) . "'"; 
+        }
+        $set_string = implode(', ', $set_sql);
 
-        return $inserted ? $wpdb->insert_id : new WP_Error( 'sub_account_error', 'Erro ao criar sub-conta.' );
+        $sql = "UPDATE $this->table_name SET $set_string WHERE id IN ($ids_sanitized)";
+        
+        return $wpdb->query( $sql );
     }
 }

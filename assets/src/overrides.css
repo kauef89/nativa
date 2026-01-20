@@ -1,0 +1,50 @@
+/* src/overrides.css */
+
+/* 1. Força o container do AutoComplete a ser flexível e ocupar tudo */
+.p-autocomplete {
+  width: 100% !important;
+  display: flex !important;
+}
+
+/* 2. Força o Input dentro dele a esticar */
+.p-autocomplete-input {
+  width: 100% !important;
+  flex: 1 1 auto !important; /* Cresce para ocupar o espaço */
+}
+
+/* 3. Garante que o painel de sugestões não fique estreito demais */
+.p-autocomplete-panel {
+  min-width: 100% !important;
+}
+
+/* 4. Respiro entre ícone e textplaceholder da barra de pesquisa de CustomersView */
+input#pv_id_2 {
+  padding-left: 52px;
+}
+
+/* --- CORREÇÃO DE MODAIS (GLOW + BORDAS) --- */
+
+.p-dialog {
+  /* Glow effect (Luz de fundo) */
+  box-shadow: 0 0 50px 10px rgba(255, 255, 255, 0.15) !important;
+
+  /* Garante que header/footer não cortem o arredondamento */
+  overflow: hidden !important;
+  border: 1px solid var(--surface-700) !important;
+}
+
+/* Força o background correto para evitar transparências indesejadas */
+.p-dialog-header,
+.p-dialog-content,
+.p-dialog-footer {
+  background-color: var(--surface-900) !important;
+  border-radius: 1rem !important;
+}
+
+.p-dialog-header {
+  border-bottom: 1px solid var(--surface-800) !important;
+}
+
+.p-dialog-footer {
+  border-top: 1px solid var(--surface-800) !important;
+}
