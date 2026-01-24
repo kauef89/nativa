@@ -1,121 +1,155 @@
-import { createRouter, createWebHistory } from "vue-router"; // <--- MUDANÇA 1 (Import)
+import { createRouter, createWebHistory } from "vue-router";
 import { useCashStore } from "../stores/cash-store";
+import { useUserStore } from "../stores/user-store";
+import { notify } from "@/services/notify";
 
-import TablesView from "../views/TablesView.vue";
-import CounterView from "../views/CounterView.vue";
-import DeliveryView from "../views/DeliveryView.vue";
-import PdvView from "../views/PdvView.vue";
-import CashFlowView from "../views/CashFlowView.vue";
-import ProductsView from "../views/ProductsView.vue";
-
-// Lazy Loading para performance
 const SplashView = () => import("../views/SplashView.vue");
-const PublicMenuView = () => import("../views/PublicMenuView.vue");
+const ClientView = () => import("../views/ClientView.vue");
+const StaffView = () => import("../views/StaffView.vue");
+
+// Views Internas
+const TablesView = () => import("../views/TablesView.vue");
+const DeliveryView = () => import("../views/DeliveryView.vue");
+const PdvView = () => import("../views/PdvView.vue");
+const CounterView = () => import("../views/CounterView.vue");
+const CashFlowView = () => import("../views/CashFlowView.vue");
+const ProductsView = () => import("../views/ProductsView.vue");
+const CustomersView = () => import("../views/CustomersView.vue");
+const TeamView = () => import("../views/TeamView.vue");
+const SettingsView = () => import("../views/SettingsView.vue");
 
 const router = createRouter({
-  // MUDANÇA 2: Usar WebHistory em vez de HashHistory
-  // Isso remove o "#" da URL e usa a API de Histórico nativa do navegador
   history: createWebHistory(),
 
   routes: [
-    // 1. SPLASH SCREEN (Raiz)
     {
       path: "/",
-      name: "splash",
+      name: "root",
       component: SplashView,
-      meta: { public: true, layout: "client" },
-    },
-    {
-      path: "/home",
-      name: "client-home",
-      component: PublicMenuView, // Reutiliza a View Principal do Cliente
-      meta: { public: true, layout: "client" },
-    },
-    // 2. CARDÁPIO DIGITAL (Cliente)
-    {
-      path: "/cardapio",
-      name: "public-menu",
-      component: PublicMenuView,
-      meta: { public: true, layout: "client" },
-    },
+      beforeEnter: (to, from, next) => {
+        const userStore = useUserStore();
+        const hasSession = userStore.initializeSession();
 
-    // 3. PDV / Gateway (Staff)
-    {
-      path: "/pdv",
-      name: "pdv",
-      component: PdvView,
+        if (hasSession) {
+          if (userStore.isStaff) {
+            // Unificação: Todos os Staff vão para o Mapa de Mesas inicialmente
+            next({ name: "staff-tables" });
+          } else {
+            next({ name: "client-home" });
+          }
+        } else {
+          next();
+        }
+      },
       meta: { public: true },
     },
 
-    // --- ROTAS PROTEGIDAS (Abaixo de /pdv ou raiz, conforme necessário) ---
+    // Área do Cliente
     {
-      path: "/tables",
-      name: "tables",
-      component: TablesView,
+      path: "/home",
+      name: "client-home",
+      component: ClientView,
+      meta: { public: true, layout: "client" },
     },
     {
-      path: "/counter",
-      name: "counter",
-      component: CounterView,
+      path: "/cardapio",
+      name: "public-menu",
+      component: ClientView,
+      meta: { public: true, layout: "client" },
     },
+
+    // Área Staff (Gestão + Operação Unificada)
     {
-      path: "/delivery",
-      name: "delivery",
-      component: DeliveryView,
+      path: "/staff",
+      component: StaffView,
+      meta: { public: false, requiresStaff: true },
+      children: [
+        { path: "tables", name: "staff-tables", component: TablesView }, // Visão Geral
+        { path: "delivery", name: "staff-delivery", component: DeliveryView },
+        { path: "pdv", name: "staff-pdv", component: PdvView }, // O PdvView decide se é Mobile ou Desktop
+        { path: "counter", name: "staff-counter", component: CounterView },
+        { path: "cash-flow", name: "staff-cash-flow", component: CashFlowView },
+        { path: "products", name: "staff-products", component: ProductsView },
+        {
+          path: "customers",
+          name: "staff-customers",
+          component: CustomersView,
+        },
+        { path: "team", name: "staff-team", component: TeamView },
+        { path: "settings", name: "staff-settings", component: SettingsView },
+      ],
     },
+
+    // Redirecionamentos de Legado
+    { path: "/tables", redirect: "/staff/tables" },
+    { path: "/pdv", redirect: "/staff/pdv" },
+    { path: "/delivery", redirect: "/staff/delivery" },
+    { path: "/waiter", redirect: "/staff/pdv" }, // Antigo waiter agora vai para o PDV responsivo
+
+    // 404
     {
-      path: "/cash-flow",
-      name: "cash-flow",
-      component: CashFlowView,
-    },
-    {
-      path: "/customers",
-      name: "customers",
-      component: () => import("../views/CustomersView.vue"),
-    },
-    {
-      path: "/products",
-      name: "products",
-      component: ProductsView,
-    },
-    {
-      path: "/team",
-      name: "team",
-      component: () => import("../views/TeamView.vue"),
-    },
-    {
-      path: "/settings",
-      name: "settings",
-      component: () => import("../views/SettingsView.vue"),
+      path: "/:pathMatch(.*)*",
+      name: "not-found",
+      component: SplashView,
+      beforeEnter: (to, from, next) => {
+        next({ name: "root" });
+      },
     },
   ],
 });
 
-// GUARDS (Proteção de Rotas)
+// Guards (Mantidos iguais)
 router.beforeEach(async (to, from, next) => {
   const cashStore = useCashStore();
+  const userStore = useUserStore();
 
-  // Garante que o status do caixa foi verificado
-  if (!cashStore.statusChecked) {
+  if (!userStore.isLoggedIn) userStore.initializeSession();
+
+  if (!to.meta.public && !cashStore.statusChecked) {
     try {
       await cashStore.checkStatus();
     } catch (e) {}
   }
 
-  // Rotas públicas (Splash, Cardápio, Login) passam direto
   if (to.meta.public) {
     next();
     return;
   }
 
-  // Se o caixa estiver FECHADO e tentar acessar rota interna -> Manda para o Login/Aviso
-  if (!cashStore.isOpen) {
-    if (to.name !== "pdv") next({ name: "pdv" });
-    else next();
+  if (to.meta.requiresStaff && !userStore.isStaff) {
+    if (userStore.isLoggedIn) next({ name: "client-home" });
+    else next({ name: "root" });
     return;
   }
 
+  if (to.meta.requiresStaff && !cashStore.isOpen) {
+    const allowedClosedRoutes = ["staff-pdv", "staff-settings", "staff-team"];
+    if (!allowedClosedRoutes.includes(to.name)) {
+      next({ name: "staff-pdv" });
+      return;
+    }
+  }
+
   next();
+});
+
+// --- NOVO: Tratamento de Erro de Atualização (Auto-Reload) ---
+router.onError((error, to) => {
+  const errors = [
+    "Failed to fetch dynamically imported module",
+    "Importing a module script failed",
+    "Loading chunk",
+    "net::ERR_ABORTED",
+  ];
+
+  if (errors.some((e) => error.message.includes(e))) {
+    console.log("[Router] Detectada versão antiga. Recarregando...");
+
+    // Evita loop infinito: só recarrega se ainda não tiver tentado
+    if (!window.location.hash.includes("retry")) {
+      window.location.href = to.fullPath; // Força refresh real
+    }
+  }
 });
 
 export default router;

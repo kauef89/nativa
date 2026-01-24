@@ -6,64 +6,120 @@ import router from "../router";
 export const useSessionStore = defineStore("session", {
   state: () => ({
     sessionId: null,
-    sessionType: null, // 'table', 'counter'
+    sessionType: null,
     identifier: null,
     accounts: ["Principal"],
     currentAccount: "Principal",
     items: [],
+    paidItems: [],
+    transactions: [],
     groupedItems: { Principal: [] },
     totals: { total: 0, subtotal: 0, discount: 0 },
     isLoading: false,
+    selectedItemsForPayment: [],
   }),
 
   getters: {
-    // CORREÇÃO: Getter que faltava.
-    // Retorna TRUE se tivermos um tipo definido (mesmo que o ID ainda seja null/lazy)
+    hasActiveSession: (state) => !!state.sessionId,
     hasOpenSession: (state) => !!state.sessionType,
-
     currentAccountItems: (state) =>
       state.groupedItems[state.currentAccount] || [],
     accountTotal: (state) => (accountName) => {
       const items = state.groupedItems[accountName] || [];
       return items.reduce((sum, item) => sum + parseFloat(item.line_total), 0);
     },
+    totalSelectedForPayment: (state) => {
+      return state.selectedItemsForPayment.reduce(
+        (sum, item) => sum + item.valueToPay,
+        0,
+      );
+    },
   },
 
   actions: {
-    async openSession(type, identifier) {
-      console.log("[NATIVA FRONT] openSession chamado", { type, identifier });
+    setAccount(accountName) {
+      if (this.accounts.includes(accountName)) {
+        this.currentAccount = accountName;
+      }
+    },
+
+    async createAccount(name, isCommand = false, targetSessionId = null) {
+      const idToUse = targetSessionId || this.sessionId || 0;
+      const tableNum = this.identifier;
+
+      if (!idToUse && !tableNum) {
+        console.error(
+          "[SessionStore] Impossível criar conta: Sem ID de sessão e sem número de mesa.",
+        );
+        notify("error", "Erro", "Sessão inválida.");
+        return false;
+      }
+
+      try {
+        const res = await api.post("/create-account", {
+          session_id: idToUse,
+          table_number: tableNum,
+          name: name,
+          is_command: isCommand,
+        });
+
+        if (res.data.success) {
+          if (res.data.session_id && !this.sessionId) {
+            this.sessionId = res.data.session_id;
+          }
+
+          if (this.sessionId === res.data.session_id) {
+            this.accounts = res.data.accounts;
+            this.currentAccount = name;
+            if (!this.groupedItems[name]) this.groupedItems[name] = [];
+          }
+
+          notify("success", "Conta Criada", `Conta '${name}' adicionada.`);
+          return true;
+        }
+      } catch (e) {
+        notify("error", "Erro", "Erro ao criar conta.");
+        console.error(e);
+        return false;
+      }
+    },
+
+    async openSession(type, identifier, redirect = true) {
       this.isLoading = true;
       try {
-        // Reset do estado
         this.sessionId = null;
         this.sessionType = type;
         this.identifier = identifier;
         this.accounts = ["Principal"];
         this.currentAccount = "Principal";
         this.items = [];
+        this.transactions = [];
         this.groupedItems = { Principal: [] };
+        this.selectedItemsForPayment = [];
 
-        // Verifica mesa se necessário
         if (type === "table") {
           await this.checkExistingSession(identifier);
         }
 
-        // Navegação
-        console.log("[NATIVA FRONT] Navegando para /pdv");
-        router.push("/pdv");
+        if (redirect) {
+          router.push("/staff/pdv");
+        }
       } catch (e) {
-        console.error("[NATIVA FRONT] Erro em openSession:", e);
+        console.error("[NATIVA] Erro em openSession:", e);
       } finally {
         this.isLoading = false;
       }
     },
 
-    async resumeSession(sessionId, identifier = null) {
+    async resumeSession(sessionId, identifier = null, redirect = true) {
       this.sessionId = sessionId;
       if (identifier) this.identifier = identifier;
       this.sessionType = "table";
       await this.refreshSession();
-      router.push("/pdv");
+
+      if (redirect) {
+        router.push("/staff/pdv");
+      }
     },
 
     async refreshSession() {
@@ -75,54 +131,37 @@ export const useSessionStore = defineStore("session", {
         );
         if (res.data.success) {
           this.items = res.data.items;
+          this.paidItems = res.data.paid_items || [];
+          this.transactions = res.data.transactions || [];
           this.accounts = res.data.accounts || ["Principal"];
           this.groupedItems = res.data.grouped_items || { Principal: [] };
           this.totals.total = res.data.total;
 
+          // CORREÇÃO: Limpeza de Seleção Fantasma
+          // Se o item não está mais na lista de ativos (foi cancelado/trocado), remove da seleção
+          const activeIds = this.items.map((i) => i.id);
+          this.selectedItemsForPayment = this.selectedItemsForPayment.filter(
+            (selection) => activeIds.includes(selection.itemId),
+          );
+
           if (!this.accounts.includes(this.currentAccount)) {
-            this.currentAccount = "Principal";
+            this.currentAccount = this.accounts.includes("Principal")
+              ? "Principal"
+              : this.accounts[0];
           }
         }
       } catch (e) {
-        console.error("Erro refreshSession", e);
+        console.error("Erro ao atualizar sessão:", e);
         if (e.response && e.response.status === 404) {
-          this.sessionId = null; // Sessão expirou
+          this.sessionId = null;
         }
       } finally {
         this.isLoading = false;
       }
     },
 
-    setAccount(accountName) {
-      if (this.accounts.includes(accountName)) {
-        this.currentAccount = accountName;
-      }
-    },
-
-    async createAccount(name, isCommand = false) {
-      if (!this.sessionId) return false;
-      try {
-        const res = await api.post("/create-account", {
-          session_id: this.sessionId,
-          name: name,
-          is_command: isCommand,
-        });
-        if (res.data.success) {
-          this.accounts = res.data.accounts;
-          this.currentAccount = name;
-          if (!this.groupedItems[name]) this.groupedItems[name] = [];
-          notify("success", "Conta Criada", `Conta '${name}' adicionada.`);
-          return true;
-        }
-      } catch (e) {
-        notify("error", "Erro", "Erro ao criar conta.");
-        return false;
-      }
-    },
-
     async addItem(product, qty = 1, modifiers = [], subAccount = null) {
       const targetAccount = subAccount || this.currentAccount;
-
       const payload = {
         session_id: this.sessionId || 0,
         product_id: product.id,
@@ -136,7 +175,6 @@ export const useSessionStore = defineStore("session", {
       try {
         const res = await api.post("/add-item", payload);
         if (res.data.success) {
-          // Captura o ID da sessão criada (Lazy Creation)
           if (res.data.session_id && !this.sessionId) {
             this.sessionId = res.data.session_id;
           }
@@ -144,7 +182,6 @@ export const useSessionStore = defineStore("session", {
           return true;
         }
       } catch (e) {
-        console.error(e);
         notify("error", "Erro", "Falha ao adicionar item.");
       }
     },
@@ -160,9 +197,7 @@ export const useSessionStore = defineStore("session", {
             await this.refreshSession();
           }
         }
-      } catch (e) {
-        console.error(e);
-      }
+      } catch (e) {}
     },
 
     leaveSession() {
@@ -172,8 +207,11 @@ export const useSessionStore = defineStore("session", {
       this.accounts = ["Principal"];
       this.currentAccount = "Principal";
       this.items = [];
+      this.paidItems = [];
+      this.transactions = [];
       this.groupedItems = { Principal: [] };
       this.totals = { total: 0, subtotal: 0, discount: 0 };
+      this.selectedItemsForPayment = [];
     },
   },
 });

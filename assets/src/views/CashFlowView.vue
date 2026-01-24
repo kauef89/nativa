@@ -136,7 +136,7 @@ import { useCashStore } from '@/stores/cash-store';
 import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
-import CashControlModal from '@/components/CashControlModal.vue';
+import CashControlModal from '@/components/manager/CashControlModal.vue';
 
 // Componente Local Simples para os Chips
 const FilterChip = {

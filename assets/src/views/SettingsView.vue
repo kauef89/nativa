@@ -13,9 +13,11 @@
         </div>
     </div>
 
-    <div v-if="store.isLoading" class="flex justify-center p-20"><i class="fa-solid fa-spinner fa-spin text-4xl text-primary-500"></i></div>
+    <div v-if="store.isLoading" class="flex justify-center p-20">
+        <i class="fa-solid fa-spinner fa-spin text-4xl text-primary-500"></i>
+    </div>
 
-    <div v-else class="flex-1 bg-surface-900 border border-surface-800 rounded-2xl flex flex-col overflow-hidden">
+    <div v-else-if="store.hours" class="flex-1 bg-surface-900 border border-surface-800 rounded-2xl flex flex-col overflow-hidden">
         
         <div class="p-4 bg-surface-950 border-b border-surface-800 flex items-center justify-between">
             <div class="flex flex-col">
@@ -24,7 +26,22 @@
             </div>
             <SelectButton v-model="store.hours.manual_override" :options="overrideOptions" optionLabel="label" optionValue="value" :pt="{ button: ({context}) => ({ class: context.active ? '!bg-primary-500 !border-primary-500' : '!bg-surface-800 !border-surface-700' }) }" />
         </div>
-
+        <div class="p-4 bg-surface-950 border-b border-surface-800 flex items-center justify-between bg-purple-500/5">
+            <div class="flex flex-col">
+                <span class="text-white font-bold text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-code text-primary-400"></i> Sempre Aberto (Admin)
+                </span>
+                <span class="text-surface-500 text-xs">Força "Aberto" apenas para você (dev/teste)</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-[10px] font-bold uppercase tracking-wider transition-colors" 
+                      :class="store.hours.admin_always_open ? 'text-primary-400' : 'text-surface-600'">
+                    {{ store.hours.admin_always_open ? 'ATIVO' : 'DESLIGADO' }}
+                </span>
+                <ToggleSwitch v-model="store.hours.admin_always_open" :pt="{ slider: ({props}) => ({ class: props.modelValue ? '!bg-purple-500' : '' }) }" />
+            </div>
+        </div>
+        
         <TabView class="flex-1 flex flex-col overflow-hidden" :pt="{ panelContainer: { class: '!bg-surface-900 !p-0 !h-full !overflow-y-auto' }, nav: { class: '!bg-surface-950 !border-b !border-surface-800' } }">
             
             <TabPanel header="Geral / Contato">
@@ -85,7 +102,7 @@
                         >
                             <div class="flex justify-between items-center">
                                 <span class="font-bold text-white uppercase">{{ dayLabel }}</span>
-                                <InputSwitch v-model="store.hours[type.id][dayKey].active" />
+                                <ToggleSwitch v-model="store.hours[type.id][dayKey].active" />
                             </div>
                             
                             <div class="flex items-center gap-2" v-if="store.hours[type.id][dayKey].active">
@@ -109,6 +126,13 @@
 
         </TabView>
     </div>
+
+    <div v-else class="flex flex-col items-center justify-center flex-1 text-surface-500">
+        <i class="fa-solid fa-triangle-exclamation text-4xl mb-4 text-orange-500"></i>
+        <p>Não foi possível carregar as configurações.</p>
+        <Button label="Tentar Novamente" text class="mt-2" @click="store.fetchAllSettings" />
+    </div>
+
   </div>
 </template>
 
@@ -118,7 +142,7 @@ import { useSettingsStore } from '@/stores/settings-store';
 import Button from 'primevue/button';
 import TabView from 'primevue/tabview';
 import TabPanel from 'primevue/tabpanel';
-import InputSwitch from 'primevue/inputswitch';
+import ToggleSwitch from 'primevue/toggleswitch'; // Atualizado para v4
 import SelectButton from 'primevue/selectbutton';
 import InputText from 'primevue/inputtext';
 
@@ -141,7 +165,7 @@ const overrideOptions = [
 
 const save = async () => {
     saving.value = true;
-    await store.saveAll(); // Atualizado para salvar tudo
+    await store.saveAll();
     saving.value = false;
 };
 

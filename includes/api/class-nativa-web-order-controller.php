@@ -56,6 +56,8 @@ class Nativa_Web_Order_Controller {
 
         if ( is_wp_error($order_id) ) return new WP_REST_Response(['success' => false, 'message' => 'Erro ao gravar pedido.'], 500);
 
+        // --- CORREÇÃO 1: VINCULAR USUÁRIO ---
+        update_post_meta($order_id, '_customer_user', $user_id);
         // 3. SALVA METADADOS
         update_post_meta($order_id, 'pedido_nome_cliente', $client_name);
         update_post_meta($order_id, 'pedido_cpf_cliente', get_user_meta($user_id, 'nativa_user_cpf', true));
@@ -74,6 +76,8 @@ class Nativa_Web_Order_Controller {
         } else {
             update_post_meta($order_id, 'pedido_tipo_servico', 'pickup');
         }
+
+        $this->auto_save_user_address($user_id, $address);
 
         update_post_meta($order_id, 'pedido_subtotal', $subtotal);
         update_post_meta($order_id, 'pedido_taxa_entrega', $delivery_fee);
@@ -275,5 +279,32 @@ class Nativa_Web_Order_Controller {
         if ( empty($items_clean) ) return new WP_Error('invalid_cart', 'Itens inválidos.');
 
         return [ 'items' => $items_clean, 'subtotal' => $subtotal ];
+    }
+
+    /**
+     * Salva o endereço no perfil do usuário se não existir
+     */
+    private function auto_save_user_address( $user_id, $new_address ) {
+        $saved = get_user_meta( $user_id, 'nativa_saved_addresses', true );
+        if ( ! is_array( $saved ) ) $saved = [];
+
+        // Verifica duplicidade (Rua + Número)
+        foreach ( $saved as $addr ) {
+            if ( 
+                strcasecmp($addr['street'], $new_address['street']) === 0 && 
+                $addr['number'] == $new_address['number'] 
+            ) {
+                return; // Já existe
+            }
+        }
+
+        // Adiciona no topo
+        $new_address['source'] = 'Pedido Recente';
+        array_unshift( $saved, $new_address );
+        
+        // Mantém apenas os últimos 5
+        if ( count($saved) > 5 ) $saved = array_slice($saved, 0, 5);
+
+        update_user_meta( $user_id, 'nativa_saved_addresses', $saved );
     }
 }

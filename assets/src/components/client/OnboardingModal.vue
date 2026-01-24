@@ -13,7 +13,7 @@
         root: { class: '!border-0 !rounded-none' }
     }"
   >
-    <div class="bg-surface-900/60 backdrop-blur-xl border-t border-white/10 rounded-t-[2.5rem] p-8 pb-12 shadow-[0_-10px_40px_rgba(0,0,0,0.6)] relative overflow-hidden animate-slide-up">
+    <div class="bg-surface-900 border-t border-white/10 rounded-t-[2.5rem] p-8 pb-12 shadow-[0_-10px_40px_rgba(0,0,0,0.6)] relative overflow-hidden animate-slide-up">
         
         <div class="absolute top-0 right-0 w-48 h-48 bg-primary-500/20 rounded-full blur-[60px] pointer-events-none -mr-10 -mt-10"></div>
         <div class="w-16 h-1.5 bg-surface-700/50 rounded-full mx-auto mb-8"></div>

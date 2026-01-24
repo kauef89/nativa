@@ -81,7 +81,7 @@ import Tag from 'primevue/tag';
 import ProgressSpinner from 'primevue/progressspinner';
 
 const props = defineProps({
-    displayMode: { type: String, default: 'center' } // 'center' | 'bottom'
+    displayMode: { type: String, default: 'center' } 
 });
 
 const ptOptions = computed(() => {
@@ -107,7 +107,6 @@ const ptOptions = computed(() => {
     };
 });
 
-// ... (Lógica do Wizard - Inalterada) ...
 const cartStore = useCartStore();
 const isOpen = ref(false);
 const isLoading = ref(true);
@@ -116,13 +115,18 @@ const steps = ref([]);
 const currentStep = ref(0);
 const selections = ref({}); 
 const nestedDetailsModal = ref(null);
-const editingIndex = ref(null); 
+const editingIndex = ref(null);
+// NOVO: Callback para troca de itens
+const customCallback = ref(null);
 
 const stepsItems = computed(() => steps.value.map((s, idx) => ({ label: `Etapa ${idx + 1}` })));
 
-const open = async (comboData, editIdx = null, existingSelections = null) => {
+// Atualizado: Aceita um callback opcional no 4º argumento
+const open = async (comboData, editIdx = null, existingSelections = null, callback = null) => {
   combo.value = comboData;
   editingIndex.value = editIdx;
+  customCallback.value = callback; // Salva o callback
+  
   isOpen.value = true;
   isLoading.value = true;
   if (editIdx === null) currentStep.value = 0;
@@ -198,6 +202,8 @@ const isStepValid = (stepIdx) => (selections.value[stepIdx]?.length || 0) === st
 const finishCombo = () => {
   let finalModifiers = [];
   let totalExtraPrice = 0;
+  
+  // Compila os itens do combo como modificadores de texto
   for (const key in selections.value) {
     selections.value[key].forEach(item => {
       finalModifiers.push({ name: `• ${item.name}`, price: item.extraPrice });
@@ -210,15 +216,25 @@ const finishCombo = () => {
       }
     });
   }
-  const cartItem = {
+
+  const finalItem = {
     ...combo.value, 
     price: parseFloat(combo.value.price) + totalExtraPrice, 
-    uniqueId: editingIndex.value !== null ? null : Date.now(), 
+    qty: 1, // Combos sempre 1 por vez no wizard
     modifiers: finalModifiers,
     savedSelections: JSON.parse(JSON.stringify(selections.value))
   };
-  if (editingIndex.value !== null) cartStore.updateItem(editingIndex.value, cartItem);
-  else cartStore.addItem(cartItem);
+
+  // Se tiver callback (Troca de item), usa ele e não o carrinho
+  if (customCallback.value) {
+      customCallback.value(finalItem);
+  } else {
+      // Comportamento padrão: Carrinho
+      finalItem.uniqueId = editingIndex.value !== null ? null : Date.now();
+      if (editingIndex.value !== null) cartStore.updateItem(editingIndex.value, finalItem);
+      else cartStore.addItem(finalItem);
+  }
+  
   isOpen.value = false;
 };
 

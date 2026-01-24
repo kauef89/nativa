@@ -335,7 +335,7 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Tag from 'primevue/tag';
-import SmartAddressForm from '@/components/SmartAddressForm.vue';
+import SmartAddressForm from '@/components/shared/SmartAddressForm.vue';
 
 // State Principal
 const selectedClient = ref(null);

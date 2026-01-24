@@ -54,6 +54,9 @@ class Nativa_Core {
         require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-mesa-cpt.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-mesa-fields.php';
         
+        // NOVO: Model de Auditoria e Logs (Timeline)
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-session-log.php';
+        
         // --- Classes Utilitárias e Configuração ---
         require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-onesignal.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-roles.php';
@@ -81,7 +84,7 @@ class Nativa_Core {
     }
 
     private function define_hooks() {
-        // 1. Inicializa CPTs, Campos e Roles (Isso deve rodar sempre)
+        // 1. Inicializa CPTs, Campos e Roles
         $legacy_cpt = new Nativa_Legacy_CPT();
         $legacy_cpt->init();
 
@@ -112,9 +115,11 @@ class Nativa_Core {
         $mesa_fields = new Nativa_Mesa_Fields();
         $mesa_fields->init();
 
-        // NOTA: Removemos Session, Cash, Stock e OrderItem daqui.
-        // Eles criam tabelas no init() e não devem rodar a cada request (Causa do Erro DB).
-        // A criação das tabelas agora é exclusiva do método activate().
+        // Inicializa a tabela de logs
+        if ( class_exists('Nativa_Session_Log') ) {
+            $log_model = new Nativa_Session_Log();
+            // A criação da tabela idealmente ocorre no activate, mas mantemos o init da classe se houver hooks
+        }
 
         Nativa_Roles::init();
 
@@ -164,17 +169,17 @@ class Nativa_Core {
     
     /**
      * Roda apenas ao ATIVAR o plugin no painel.
-     * Cria/Atualiza as tabelas do banco.
      */
     public static function activate() {
-        // Carrega dependências manualmente pois a classe pode não ter instanciado ainda
         require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-session.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-order-item.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-cash-register.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-stock.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-roles.php';
         
-        // Cria Tabelas (dbDelta)
+        // Carrega o novo model para criar a tabela no activate
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-session-log.php'; 
+        
         $session = new Nativa_Session();
         $session->create_table();
         
@@ -182,12 +187,14 @@ class Nativa_Core {
         $items->create_table();
 
         $cash = new Nativa_Cash_Register();
-        $cash->create_tables(); // Chama direto o criador, não o init
+        $cash->create_tables();
 
         $stock = new Nativa_Stock();
-        $stock->create_table(); // Chama direto o criador
+        $stock->create_table();
         
-        // Configurações
+        $logs = new Nativa_Session_Log(); // Cria a tabela de logs
+        $logs->create_table();
+        
         Nativa_Roles::add_custom_roles();
         flush_rewrite_rules();
     }

@@ -22,11 +22,9 @@ class Nativa_Frontend_Loader {
     }
 
     public function add_rewrite_rule() {
-        // Rota 1: PDV (Gestão)
-        add_rewrite_rule( '^pdv(?:/(.*))?$', 'index.php?nativa_app=1', 'top' );
-        
-        // Rota 2: Cardápio (Cliente) <--- ESTA É A LINHA QUE FALTAVA
-        add_rewrite_rule( '^cardapio(?:/(.*))?$', 'index.php?nativa_app=1', 'top' );
+        // Regra Unificada para todas as rotas do App
+        // A regex 'staff' captura '/staff/waiter', '/staff/tables', etc. automaticamente no grupo (.*)
+        add_rewrite_rule( '^(pdv|cardapio|staff|home)(?:/(.*))?$', 'index.php?nativa_app=1', 'top' );
     }
 
     public function add_query_var( $vars ) {
@@ -39,7 +37,9 @@ class Nativa_Frontend_Loader {
         
         // Proteção extra contra redirecionamento por URL
         $uri = $_SERVER['REQUEST_URI'];
-        if ( strpos($uri, '/cardapio') !== false || strpos($uri, '/pdv') !== false ) {
+        
+        // CORREÇÃO: Adicionado verificação para '/staff'
+        if ( strpos($uri, '/cardapio') !== false || strpos($uri, '/pdv') !== false || strpos($uri, '/staff') !== false ) {
             return false;
         }
         return $redirect_url;
@@ -71,11 +71,10 @@ class Nativa_Frontend_Loader {
         }
 
         $nativa_data = array(
-        'root'  => esc_url_raw( rest_url() ),
-        'nonce' => wp_create_nonce( 'wp_rest' ),
-        // ADICIONE ESTA LINHA:
-        'mapsApiKey' => defined('NATIVA_GOOGLE_MAPS_API_KEY') ? NATIVA_GOOGLE_MAPS_API_KEY : ''
-    );
+            'root'  => esc_url_raw( rest_url() ),
+            'nonce' => wp_create_nonce( 'wp_rest' ),
+            'mapsApiKey' => defined('NATIVA_GOOGLE_MAPS_API_KEY') ? NATIVA_GOOGLE_MAPS_API_KEY : ''
+        );
     
         $onesignal_data = array(
             'app_id' => defined('NATIVA_ONESIGNAL_APP_ID') ? NATIVA_ONESIGNAL_APP_ID : '',

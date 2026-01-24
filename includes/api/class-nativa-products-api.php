@@ -44,19 +44,27 @@ class Nativa_Products_API {
             $stock_active = (bool) get_post_meta( $p->ID, 'nativa_estoque_ativo', true );
             $stock_qty = (int) get_post_meta( $p->ID, 'nativa_estoque_qtd', true );
             $availability = get_post_meta( $p->ID, 'produto_disponibilidade', true ) ?: 'disponivel';
+            
+            // --- NOVOS CAMPOS ---
+            // Se não existir (null/empty), assume true (1) para compatibilidade, exceto 18+
+            $meta_del = get_post_meta( $p->ID, 'nativa_exibir_delivery', true );
+            $show_delivery = ($meta_del === '' || $meta_del === '1'); 
+            
+            $meta_mesa = get_post_meta( $p->ID, 'nativa_exibir_mesa', true );
+            $show_table = ($meta_mesa === '' || $meta_mesa === '1');
+
+            $is_18 = (bool) get_post_meta( $p->ID, 'nativa_apenas_maiores', true );
+            // --------------------
+
             $img = get_the_post_thumbnail_url( $p->ID, 'thumbnail' );
             $sku = str_pad($p->ID, 4, '0', STR_PAD_LEFT); 
 
-            // --- CORREÇÃO: BUSCAR CATEGORIA DO WORDPRESS ---
             $terms = get_the_terms( $p->ID, 'category' );
-            $cat_name = 'Geral'; // Valor padrão se não tiver categoria
+            $cat_name = 'Geral'; 
             
             if ( ! empty( $terms ) && ! is_wp_error( $terms ) ) {
-                // Pega a primeira categoria
                 $term = $terms[0];
                 $cat_name = $term->name;
-                
-                // Se for subcategoria, adiciona o pai (Ex: Bebidas > Sucos)
                 if ( $term->parent ) {
                     $parent = get_term( $term->parent, 'category' );
                     if ( ! is_wp_error( $parent ) ) {
@@ -64,7 +72,6 @@ class Nativa_Products_API {
                     }
                 }
             }
-            // -----------------------------------------------
 
             $data[] = array(
                 'id' => $p->ID,
@@ -75,7 +82,11 @@ class Nativa_Products_API {
                 'manage_stock' => $stock_active,
                 'stock_quantity' => $stock_qty,
                 'availability' => $availability,
-                'category_name' => $cat_name // <--- AGORA ESTAMOS ENVIANDO O NOME!
+                'category_name' => $cat_name,
+                // NOVOS DADOS
+                'show_delivery' => $show_delivery,
+                'show_table'    => $show_table,
+                'is_18_plus'    => $is_18
             );
         }
 
@@ -92,6 +103,12 @@ class Nativa_Products_API {
         if ( isset( $params['availability'] ) ) {
             update_post_meta( $id, 'produto_disponibilidade', sanitize_text_field( $params['availability'] ) );
         }
+
+        // --- NOVOS CAMPOS ---
+        if ( isset( $params['show_delivery'] ) ) update_post_meta( $id, 'nativa_exibir_delivery', $params['show_delivery'] ? 1 : 0 );
+        if ( isset( $params['show_table'] ) )    update_post_meta( $id, 'nativa_exibir_mesa', $params['show_table'] ? 1 : 0 );
+        if ( isset( $params['is_18_plus'] ) )    update_post_meta( $id, 'nativa_apenas_maiores', $params['is_18_plus'] ? 1 : 0 );
+        // --------------------
 
         if ( isset( $params['stock_quantity'] ) ) {
             $new_qty = (float) $params['stock_quantity'];
@@ -120,6 +137,12 @@ class Nativa_Products_API {
             $id = (int)$id;
             if ( isset( $data['availability'] ) ) update_post_meta( $id, 'produto_disponibilidade', sanitize_text_field( $data['availability'] ) );
             if ( isset( $data['manage_stock'] ) ) update_post_meta( $id, 'nativa_estoque_ativo', $data['manage_stock'] ? 1 : 0 );
+            
+            // --- NOVOS CAMPOS (Bulk) ---
+            if ( isset( $data['show_delivery'] ) ) update_post_meta( $id, 'nativa_exibir_delivery', $data['show_delivery'] ? 1 : 0 );
+            if ( isset( $data['show_table'] ) )    update_post_meta( $id, 'nativa_exibir_mesa', $data['show_table'] ? 1 : 0 );
+            // ---------------------------
+
             if ( isset( $data['stock_quantity'] ) ) {
                 $new_qty = (float)$data['stock_quantity'];
                 update_post_meta( $id, 'nativa_estoque_ativo', 1 );

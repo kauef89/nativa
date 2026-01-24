@@ -19,12 +19,57 @@ class Nativa_Debug_API {
             'methods'  => 'GET', 'callback' => array( $this, 'inspect_routing' ), 'permission_callback' => '__return_true',
         ) );
 
-        // NOVA ROTA: Ler o código fonte do Loader
         register_rest_route( 'nativa/v2', '/debug-source', array(
             'methods'  => 'GET', 'callback' => array( $this, 'inspect_loader_source' ), 'permission_callback' => '__return_true',
         ) );
+
+        // --- ROTA DE CORREÇÃO DE BANCO ---
+        register_rest_route( 'nativa/v2', '/debug-db-fix', array(
+            'methods'  => 'GET', 
+            'callback' => array( $this, 'force_db_update' ), 
+            'permission_callback' => '__return_true',
+        ) );
     }
 
+    /**
+     * Força a criação/atualização das tabelas
+     */
+    public function force_db_update() {
+        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+        
+        $results = [];
+
+        // 1. Tabela de Logs
+        if ( class_exists('Nativa_Session_Log') ) {
+            $logs = new Nativa_Session_Log();
+            $logs->create_table();
+            $results[] = 'Tabela Session Logs verificada.';
+        }
+
+        // 2. Tabela de Sessões
+        if ( class_exists('Nativa_Session') ) {
+            $session = new Nativa_Session();
+            $session->create_table();
+            $results[] = 'Tabela Sessions verificada.';
+        }
+
+        // 3. Tabela de Itens (AQUI ESTÁ A CORREÇÃO CRÍTICA)
+        if ( class_exists('Nativa_Order_Item') ) {
+            $items = new Nativa_Order_Item();
+            $items->create_table(); // Isso vai rodar o dbDelta e criar a coluna line_total
+            $results[] = 'Tabela Order Items atualizada (Coluna line_total adicionada).';
+        } else {
+            $results[] = 'ERRO: Classe Nativa_Order_Item não encontrada.';
+        }
+
+        return new WP_REST_Response([
+            'success' => true, 
+            'log' => $results,
+            'message' => 'Atualização de banco executada.'
+        ], 200);
+    }
+
+    // ... (Mantenha os outros métodos scan_database, inspect_schema, etc iguais) ...
     public function scan_database() {
         global $wpdb;
         $post_types = $wpdb->get_results( "SELECT post_type, COUNT(*) as qtd FROM {$wpdb->posts} GROUP BY post_type" );
@@ -63,51 +108,15 @@ class Nativa_Debug_API {
                 }
             }
         }
-        $conflicts = [];
-        $slugs_to_check = ['cardapio', 'pdv', 'app'];
-        foreach ( $slugs_to_check as $slug ) {
-            $page = get_page_by_path( $slug, OBJECT, array('post', 'page', 'attachment') );
-            if ( $page ) {
-                $conflicts[] = "ALERTA: Existe um(a) {$page->post_type} com slug '/$slug' (ID: {$page->ID}, Status: {$page->post_status}).";
-            }
-            $trashed = get_posts(['name' => $slug, 'post_type' => 'any', 'post_status' => 'trash']);
-            if ( !empty($trashed) ) {
-                $conflicts[] = "ALERTA: Item na lixeira com slug '/$slug'.";
-            }
-        }
         $has_var = in_array( 'nativa_app', $wp->public_query_vars );
         return new WP_REST_Response([
             'status_flush' => $flush_status,
-            'variavel_nativa_app' => $has_var ? 'SIM' : 'NÃO (Erro Crítico)',
-            'regras_ativas_db' => !empty($nativa_rules) ? $nativa_rules : 'NENHUMA (WP não conhece a rota)',
-            'conflitos' => !empty($conflicts) ? $conflicts : 'Nenhum',
-            'link_correcao' => rest_url('nativa/v2/debug-routing?fix=flush')
+            'variavel_nativa_app' => $has_var ? 'SIM' : 'NÃO',
+            'regras_ativas' => $nativa_rules
         ], 200);
     }
 
-    /**
-     * Lê o arquivo físico para ver se o código foi atualizado
-     */
     public function inspect_loader_source() {
-        $file_path = NATIVA_PLUGIN_DIR . 'includes/frontend/class-nativa-frontend-loader.php';
-        
-        if ( ! file_exists( $file_path ) ) {
-            return new WP_REST_Response([ 'erro' => 'Arquivo não encontrado no disco: ' . $file_path ], 404);
-        }
-
-        $content = file_get_contents( $file_path );
-        
-        // Verifica se a string crítica existe no conteúdo
-        $tem_cardapio = strpos( $content, 'cardapio' ) !== false;
-        $tem_filtro_canonical = strpos( $content, 'redirect_canonical' ) !== false;
-
-        return new WP_REST_Response([
-            'caminho' => $file_path,
-            'tamanho' => filesize( $file_path ) . ' bytes',
-            'modificado_em' => date( 'Y-m-d H:i:s', filemtime( $file_path ) ),
-            'contem_regra_cardapio' => $tem_cardapio ? 'SIM' : 'NÃO (Arquivo Antigo!)',
-            'contem_fix_canonical' => $tem_filtro_canonical ? 'SIM' : 'NÃO',
-            'conteudo_completo' => $content // Cuidado: Exibe o código na tela
-        ], 200);
+        return new WP_REST_Response(['status' => 'ok'], 200);
     }
 }

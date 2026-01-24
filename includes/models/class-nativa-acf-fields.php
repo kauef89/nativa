@@ -39,7 +39,36 @@ class Nativa_ACF_Fields {
                     'prepend' => 'R$',
                     'wrapper' => array('width' => '50'),
                 ),
-                // --- NOVOS CAMPOS DE ESTOQUE ---
+                // --- NOVOS CAMPOS DE VISIBILIDADE ---
+                array(
+                    'key' => 'field_nativa_exibir_delivery',
+                    'label' => 'Exibir no Delivery (App/Site)',
+                    'name' => 'nativa_exibir_delivery',
+                    'type' => 'true_false',
+                    'ui' => 1,
+                    'default_value' => 1, // Padrão: Visível
+                    'wrapper' => array('width' => '33'),
+                ),
+                array(
+                    'key' => 'field_nativa_exibir_mesa',
+                    'label' => 'Exibir na Mesa (Garçom)',
+                    'name' => 'nativa_exibir_mesa',
+                    'type' => 'true_false',
+                    'ui' => 1,
+                    'default_value' => 1, // Padrão: Visível
+                    'wrapper' => array('width' => '33'),
+                ),
+                array(
+                    'key' => 'field_nativa_apenas_maiores',
+                    'label' => 'Apenas Maiores de 18 (Alcoólico)',
+                    'name' => 'nativa_apenas_maiores',
+                    'type' => 'true_false',
+                    'ui' => 1,
+                    'message' => 'Restringir idade',
+                    'default_value' => 0,
+                    'wrapper' => array('width' => '33'),
+                ),
+                // ------------------------------------
                 array(
                     'key' => 'field_estoque_ativo',
                     'label' => 'Gerenciar Estoque?',
@@ -60,7 +89,6 @@ class Nativa_ACF_Fields {
                         ),
                     ),
                 ),
-                // -------------------------------
                 array(
                     'key' => 'field_produto_disponibilidade',
                     'label' => 'Disponibilidade (Manual)',

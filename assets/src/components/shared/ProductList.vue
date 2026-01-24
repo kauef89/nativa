@@ -7,7 +7,7 @@
 
     <div v-else class="flex w-full h-full">
       
-      <div class="w-max flex-none bg-surface-900 border-r border-surface-800 overflow-y-auto flex flex-col">
+      <div class="w-max flex-none bg-surface-900 border-r border-surface-800 overflow-y-auto flex flex-col scrollbar-thin">
         <div class="p-4 text-xs font-bold text-surface-400 uppercase tracking-wider whitespace-nowrap">Categorias</div>
         
         <ul class="list-none p-0 m-0 space-y-1 px-2 pb-4">
@@ -53,48 +53,43 @@
         </ul>
       </div>
 
-      <div class="flex-1 bg-surface-950 overflow-y-auto p-6 scrollbar-thin">
+      <div class="flex-1 bg-surface-950 overflow-y-auto p-4 scrollbar-thin">
         
-        <div v-if="currentCategory" class="animate-fade-in mb-6">
-            <div class="flex items-center text-white mb-2">
-                <span class="w-1.5 h-8 bg-primary-500 rounded-full mr-3"></span>
-                <span class="text-2xl font-bold">{{ currentCategory.name }}</span>
-            </div>
-            <div v-if="currentCategory.parent_id" class="text-sm text-surface-400 ml-4 flex items-center">
-               <i class="pi pi-arrow-turn-down-right mr-2"></i> Em {{ getParentName(currentCategory.parent_id) }}
+        <div v-if="currentCategory" class="animate-fade-in mb-4 sticky top-0 bg-surface-950 z-10 py-2 border-b border-surface-800">
+            <div class="flex items-center text-white">
+                <span class="w-1.5 h-6 bg-primary-500 rounded-full mr-3"></span>
+                <span class="text-xl font-bold">{{ currentCategory.name }}</span>
             </div>
         </div>
 
-        <div v-if="currentCategory && currentCategory.products.length > 0" class="flex flex-col space-y-3 animate-fade-in">
+        <div v-if="currentCategory && currentCategory.products.length > 0" class="grid grid-cols-1 xl:grid-cols-2 gap-3 animate-fade-in pb-10">
             <div v-for="product in currentCategory.products" :key="product.id">
                 
                 <div 
-                    class="group bg-surface-900 border border-surface-800 rounded-xl p-3 cursor-pointer hover:border-primary-500/50 hover:bg-surface-800 transition-all duration-200 flex items-center active:scale-[0.99]"
+                    class="group bg-surface-900 border border-surface-800 rounded-xl p-2.5 cursor-pointer hover:border-primary-500/50 hover:bg-surface-800 transition-all duration-200 flex gap-3 active:scale-[0.98] h-20"
                     @click="emit('open-product', product)"
                 >
-                    <div class="w-16 h-16 rounded-lg bg-surface-800 flex-none overflow-hidden relative border border-surface-700">
+                    <div class="w-14 h-14 rounded-lg bg-surface-800 flex-none overflow-hidden relative border border-surface-700 self-center">
                         <img v-if="product.image" :src="product.image" class="w-full h-full object-cover">
                         <div v-else class="flex items-center justify-center h-full text-surface-600">
-                            <i class="pi fa-regular fa-image text-xl"></i>
+                            <i class="pi fa-regular fa-image text-lg"></i>
                         </div>
                     </div>
 
-                    <div class="flex-1 ml-4 min-w-0">
-                        <div class="font-bold text-lg text-surface-100 group-hover:text-primary-400 transition-colors truncate">
+                    <div class="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                        <div class="font-bold text-sm text-surface-200 group-hover:text-white transition-colors truncate leading-tight">
                             {{ product.name }}
                         </div>
-                        <div class="text-sm text-surface-400 truncate mt-0.5" v-if="product.description">
-                            {{ product.description }}
+                        
+                        <div class="flex items-center justify-between mt-1">
+                            <span class="text-primary-400 font-bold font-mono text-sm">
+                                R$ {{ formatPrice(product.price) }}
+                            </span>
+                            
+                            <button class="w-7 h-7 rounded bg-surface-800 border border-surface-700 flex items-center justify-center text-surface-400 group-hover:bg-primary-500 group-hover:border-primary-500 group-hover:text-surface-900 transition-all shadow-sm">
+                                <i class="pi fa-solid fa-plus text-xs font-bold"></i>
+                            </button>
                         </div>
-                    </div>
-                    
-                    <div class="flex items-center gap-4 ml-4">
-                        <span class="text-primary-500 font-bold bg-primary-500/10 px-3 py-1.5 rounded-lg text-base whitespace-nowrap">
-                            R$ {{ formatPrice(product.price) }}
-                        </span>
-                        <button class="w-10 h-10 rounded-full bg-surface-950 border border-surface-700 flex items-center justify-center text-surface-400 group-hover:bg-primary-500 group-hover:border-primary-500 group-hover:text-surface-900 transition-all shadow-sm">
-                            <i class="pi fa-solid fa-plus text-sm font-bold"></i>
-                        </button>
                     </div>
                 </div>
 
@@ -115,6 +110,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useMenuStore } from '@/stores/menu-store';
+import ProgressSpinner from 'primevue/progressspinner';
 
 const store = useMenuStore();
 const activeTab = ref(null); 

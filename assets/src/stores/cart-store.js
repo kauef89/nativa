@@ -30,9 +30,7 @@ export const useCartStore = defineStore("cart", {
   },
 
   actions: {
-    // ... (addItem, increaseQty, decreaseQty mantidos iguais) ...
     addItem(product) {
-      // Lógica existente mantida...
       const existing = this.items.find(
         (i) =>
           i.id === product.id &&
@@ -49,9 +47,15 @@ export const useCartStore = defineStore("cart", {
       }
       this.isOpen = true;
     },
+
+    updateItem(index, newItem) {
+      this.items[index] = newItem;
+    },
+
     increaseQty(index) {
       this.items[index].qty++;
     },
+
     decreaseQty(index) {
       if (this.items[index].qty > 1) {
         this.items[index].qty--;
@@ -60,10 +64,6 @@ export const useCartStore = defineStore("cart", {
       }
     },
 
-    /**
-     * Checkout Web / Delivery (V2)
-     * Envia o carrinho completo de uma vez.
-     */
     async checkoutWeb() {
       const userStore = useUserStore();
 
@@ -74,7 +74,6 @@ export const useCartStore = defineStore("cart", {
           "Login Necessário",
           "Entre na sua conta para finalizar.",
         );
-        // Lógica para abrir modal de login...
         return;
       }
       if (!this.checkoutForm.address && !this.checkoutForm.isPickup) {
@@ -89,7 +88,7 @@ export const useCartStore = defineStore("cart", {
           items: this.items.map((i) => ({
             id: i.id,
             qty: i.qty,
-            modifiers: i.modifiers, // Array de modificadores
+            modifiers: i.modifiers,
           })),
           address: this.checkoutForm.address,
           payment: {
@@ -101,7 +100,6 @@ export const useCartStore = defineStore("cart", {
           source: "app_web_v2",
         };
 
-        // Chama a nova rota de criação de pedido
         const { data } = await api.post("/place-web-order", payload);
 
         if (data.success) {
@@ -110,7 +108,7 @@ export const useCartStore = defineStore("cart", {
             "Sucesso!",
             "Seu pedido foi realizado. Acompanhe o status.",
           );
-          this.items = []; // Limpa carrinho
+          this.items = [];
           this.checkoutForm = {
             address: null,
             paymentMethod: null,
@@ -119,10 +117,6 @@ export const useCartStore = defineStore("cart", {
             notes: "",
           };
           this.isOpen = false;
-
-          // Redireciona para página de sucesso/acompanhamento
-          // router.push(`/pedido/${data.order_id}`);
-          // Ou abre modal de sucesso
         } else {
           throw new Error(data.message || "Erro desconhecido.");
         }
@@ -138,12 +132,14 @@ export const useCartStore = defineStore("cart", {
     async sendOrder() {
       const sessionStore = useSessionStore();
 
+      // [SONDA 4] Auditoria antes do envio
+      console.log("--- [AUDIT CART] INICIO DO ENVIO ---");
+      console.log("Conta Atual na SessionStore:", sessionStore.currentAccount);
+      console.log("ID da Sessão:", sessionStore.sessionId);
+      console.log("Itens no Carrinho:", JSON.parse(JSON.stringify(this.items)));
+
       if (this.items.length === 0) return;
 
-      // VALIDAÇÃO CORRIGIDA:
-      // Se for Mesa, precisa ter identifier (número da mesa).
-      // Se for Balcão/Delivery, identifier pode ser opcional ou nome.
-      // sessionId pode ser null se for a primeira vez (Lazy Creation).
       if (sessionStore.sessionType === "table" && !sessionStore.identifier) {
         notify("warn", "Atenção", "Número da mesa não identificado.");
         return;
@@ -156,38 +152,53 @@ export const useCartStore = defineStore("cart", {
 
         // 1. Lógica de Criação (Lazy) - Primeiro item cria a sessão
         if (!sessionStore.sessionId) {
-          const firstItem = itemsToSend.shift(); // Remove o primeiro para criar
+          const firstItem = itemsToSend.shift();
 
+          // [SONDA 5-A] Payload do Lazy Creation
           const payloadFirst = {
             session_id: 0,
             product_id: firstItem.id,
             qty: firstItem.qty,
             modifiers: firstItem.modifiers,
-            sub_account: sessionStore.currentAccount,
-            table_number: sessionStore.identifier, // Envia o nº da mesa
-            type: sessionStore.sessionType || "table", // Default table
-            client_name: sessionStore.clientName, // Para balcão
+            sub_account: sessionStore.currentAccount, // <--- Verifica se isso é 'Maria' ou 'Principal'
+            table_number: sessionStore.identifier,
+            type: sessionStore.sessionType || "table",
+            client_name: sessionStore.clientName,
           };
+
+          console.log(
+            "[AUDIT CART] Enviando PRIMEIRO item (Lazy Create):",
+            payloadFirst,
+          );
 
           const res = await api.post("/add-item", payloadFirst);
 
           if (res.data.success && res.data.session_id) {
-            sessionStore.sessionId = res.data.session_id; // Atualiza ID
+            sessionStore.sessionId = res.data.session_id;
+            console.log(
+              "[AUDIT CART] Sessão Criada. Novo ID:",
+              sessionStore.sessionId,
+            );
           } else {
             throw new Error("Falha ao criar sessão no servidor.");
           }
         }
 
-        // 2. Envia o restante dos itens (agora com sessionId garantido)
+        // 2. Envia o restante dos itens
         if (itemsToSend.length > 0) {
           const promises = itemsToSend.map((item) => {
-            return api.post("/add-item", {
+            // [SONDA 5-B] Payload dos demais itens
+            const payload = {
               session_id: sessionStore.sessionId,
               product_id: item.id,
               qty: item.qty,
               modifiers: item.modifiers,
-              sub_account: sessionStore.currentAccount,
-            });
+              sub_account: sessionStore.currentAccount, // <--- Verifica se isso é 'Maria' ou 'Principal'
+            };
+
+            console.log("[AUDIT CART] Enviando item subsequente:", payload);
+
+            return api.post("/add-item", payload);
           });
           await Promise.all(promises);
         }
@@ -198,14 +209,10 @@ export const useCartStore = defineStore("cart", {
         this.items = [];
         this.isOpen = false;
 
-        // 3. Redirecionamento Correto
         if (sessionStore.sessionType === "table") {
           router.push("/tables");
         } else if (sessionStore.sessionType === "delivery") {
           router.push("/delivery");
-        } else {
-          // Balcão pode ficar no PDV ou ir para lista
-          // router.push("/counter");
         }
       } catch (error) {
         console.error(error);
@@ -216,6 +223,7 @@ export const useCartStore = defineStore("cart", {
         );
       } finally {
         this.isSending = false;
+        console.log("--- [AUDIT CART] FIM DO ENVIO ---");
       }
     },
   },

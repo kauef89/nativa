@@ -27,7 +27,7 @@ body,
 #nativa-app {
   height: 100%;
   width: 100%;
-  overflow: hidden; /* Evita scroll duplo */
+  /* overflow: hidden; /* Evita scroll duplo */
 }
 
 /* 4. Scrollbar Estilizada */
@@ -44,4 +44,41 @@ body,
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #52525b; /* surface-600 */
+}
+
+/* 4. Scrollbar Estilizada Global */
+* {
+  /* Para Firefox: scrollbar fina e cores */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+/* Para navegadores Webkit (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+  width: 6px; /* Largura fina para vertical */
+  height: 6px; /* Altura fina para horizontal */
+}
+
+::-webkit-scrollbar-track {
+  background: transparent; /* Remove o fundo da track para não parecer ter padding */
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1); /* Cor sutil quase invisível parada */
+  border-radius: 10px;
+  transition: background 0.3s;
+}
+
+/* Mostra a scrollbar com mais destaque apenas ao interagir ou rolar */
+*:hover::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Garante que o conteúdo não "pule" quando a scrollbar aparece */
+html,
+body {
+  scrollbar-gutter: stable both-edges; /* Opcional: reserva espaço simétrico */
+  /* Ou, para o efeito de "sobreposição" total que você pediu: */
+  overflow: overlay;
 }

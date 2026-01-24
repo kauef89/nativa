@@ -174,7 +174,7 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
 import MultiSelect from 'primevue/multiselect'; // <--- TROCA IMPORTANTE
-import ProductEditDrawer from '@/components/ProductEditDrawer.vue';
+import ProductEditDrawer from '@/components/manager/ProductEditDrawer.vue';
 
 const store = useProductsStore();
 const showDrawer = ref(false);

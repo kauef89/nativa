@@ -37,6 +37,13 @@ class Nativa_Profile_API {
             'callback'            => array( $this, 'delete_address' ),
             'permission_callback' => function() { return current_user_can( 'edit_posts' ); },
         ) );
+
+        // 5. Meu Perfil (Dados + Endereços para o App)
+        register_rest_route( 'nativa/v2', '/my-profile', array(
+            'methods'             => 'GET',
+            'callback'            => array( $this, 'get_my_profile' ),
+            'permission_callback' => 'is_user_logged_in',
+        ) );
     }
 
     /**
@@ -420,5 +427,25 @@ class Nativa_Profile_API {
             'total'  => $total,
             'type'   => $type
         );
+    }
+
+    public function get_my_profile( $request ) {
+        $user_id = get_current_user_id();
+        $user = get_userdata( $user_id );
+
+        // Busca endereços salvos
+        $addresses = get_user_meta( $user_id, 'nativa_saved_addresses', true );
+        if ( ! is_array( $addresses ) ) $addresses = [];
+
+        // Dados básicos
+        $data = [
+            'id' => $user_id,
+            'name' => $user->display_name,
+            'email' => $user->user_email,
+            'phone' => get_user_meta($user_id, 'nativa_user_phone', true) ?: get_user_meta($user_id, 'billing_phone', true),
+            'addresses' => $addresses
+        ];
+
+        return new WP_REST_Response(['success' => true, 'user' => $data], 200);
     }
 }
