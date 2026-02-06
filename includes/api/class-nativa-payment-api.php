@@ -1,9 +1,7 @@
 <?php
 /**
- * API de Pagamentos e Transações (V5 - Final)
- * - Processamento de pagamentos parciais (Caixa)
- * - Integração Pix Sicredi (Geração e Consulta)
- * - Encerramento inteligente de sessão e Lógica de Timeout
+ * API de Pagamentos e Transações
+ * Responsável por registrar pagamentos, gerar Pix e baixar sessões.
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -11,270 +9,175 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 class Nativa_Payment_API {
 
     public function register_routes() {
-        
-        // 1. Processar Pagamento Manual (Dinheiro, Cartão, Fiado - Caixa)
+        // ... (Rotas mantidas) ...
         register_rest_route( 'nativa/v2', '/pay-session', array(
             'methods'             => 'POST',
             'callback'            => array( $this, 'pay_session_endpoint' ),
-            'permission_callback' => '__return_true', // Ideal: check_staff_permission
-        ));
-
-        // 2. Gerar Pix Sicredi (Copia e Cola)
-        register_rest_route( 'nativa/v2', '/generate-pix', array(
-            'methods'             => 'POST',
-            'callback'            => array( $this, 'generate_pix_endpoint' ),
             'permission_callback' => '__return_true',
         ));
-
-        // 3. Checar Status Pix (Polling & Timeout)
-        register_rest_route( 'nativa/v2', '/check-pix-status', array(
-            'methods'             => 'GET',
-            'callback'            => array( $this, 'check_pix_status_endpoint' ),
-            'permission_callback' => '__return_true',
-        ));
+        register_rest_route( 'nativa/v2', '/generate-pix', array( 'methods' => 'POST', 'callback' => array( $this, 'generate_pix_endpoint' ), 'permission_callback' => '__return_true' ));
+        register_rest_route( 'nativa/v2', '/check-pix-status', array( 'methods' => 'GET', 'callback' => array( $this, 'check_pix_status_endpoint' ), 'permission_callback' => '__return_true' ));
+        register_rest_route( 'nativa/v2', '/cash/cancel-transaction', array( 'methods' => 'POST', 'callback' => array( $this, 'cancel_transaction' ), 'permission_callback' => function() { return current_user_can('nativa_manager') || current_user_can('administrator'); } ));
     }
 
     /**
-     * Endpoint 1: Pagamento Manual / Parcial no Caixa
+     * Efetua o pagamento e fecha a sessão se quitado
      */
     public function pay_session_endpoint( $request ) {
         global $wpdb;
         $params = $request->get_json_params();
-
-        $session_id = isset($params['session_id']) ? (int)$params['session_id'] : null;
-        $method     = isset($params['method']) ? sanitize_text_field($params['method']) : null;
-        $total_paid = isset($params['amount']) ? floatval($params['amount']) : 0;
-        $items_to_pay = isset($params['items']) ? $params['items'] : []; 
         
-        // NOVO: Recebe o nome da conta (Ex: João)
-        $account_name = isset($params['account']) ? sanitize_text_field($params['account']) : '';
+        $session_id = isset($params['session_id']) ? intval($params['session_id']) : 0;
+        $payments   = isset($params['payments']) ? $params['payments'] : [];
+        $request_review = isset($params['request_review']) ? (bool)$params['request_review'] : false;
+        
+        // NOVO: Pega o nome da conta para a descrição
+        $account_name = isset($params['account']) ? sanitize_text_field($params['account']) : 'Cliente';
 
-        if ( empty($session_id) || $total_paid <= 0 || empty($method) ) {
+        if ( ! $session_id || empty($payments) ) {
             return new WP_REST_Response(['success' => false, 'message' => 'Dados inválidos.'], 400);
         }
 
-        $register_id = 0;
-        if ( class_exists('Nativa_Cash_Register') ) {
-            $cash_model = new Nativa_Cash_Register();
-            $open_register = $cash_model->get_current_open_register();
-            $register_id = $open_register ? $open_register->id : 0;
-        }
+        $user_id = get_current_user_id();
+        
+        $table_trans = $wpdb->prefix . 'nativa_transactions';
+        $table_registers = $wpdb->prefix . 'nativa_cash_registers'; 
+        $table_sessions = $wpdb->prefix . 'nativa_sessions';
+        $table_items = $wpdb->prefix . 'nativa_order_items';
 
         $wpdb->query('START TRANSACTION');
 
         try {
-            $items_table = $wpdb->prefix . 'nativa_order_items';
+            $register_id = $wpdb->get_var("SELECT id FROM $table_registers WHERE status = 'open' OR status = 'aberto' ORDER BY id DESC LIMIT 1");
+            if ( !$register_id ) $register_id = 0; 
+
+            $sess = $wpdb->get_row($wpdb->prepare("SELECT id, status, delivery_fee, client_id, type, table_number FROM $table_sessions WHERE id = %d", $session_id));
+            if (!$sess) throw new Exception("Sessão não encontrada.");
+            if ($sess->status === 'closed') throw new Exception("Pedido já baixado.");
+
+            $paid_sql = "SELECT SUM(amount) FROM $table_trans WHERE session_id = %d AND (type = 'sale' OR type = 'in' OR type = 'reversal')";
+            $previous_paid = (float) $wpdb->get_var($wpdb->prepare($paid_sql, $session_id));
+
+            $current_payment_total = 0;
             
-            foreach ($items_to_pay as $payment_data) {
-                $item_id = (int)$payment_data['itemId'];
-                $val_paid = floatval($payment_data['valueToPay']);
-                $item = $wpdb->get_row($wpdb->prepare("SELECT line_total, status FROM $items_table WHERE id = %d", $item_id));
-                if (!$item) continue;
-                $new_total = max(0, $item->line_total - $val_paid);
-                $new_status = ($new_total <= 0.01) ? 'paid' : 'confirmed';
-                $wpdb->update($items_table, array('line_total' => $new_total, 'status' => $new_status, 'updated_at' => current_time('mysql')), array('id' => $item_id));
+            // Monta descrição base
+            $context_label = '';
+            if ($sess->type === 'table') $context_label = "Mesa {$sess->table_number}";
+            else if ($sess->type === 'delivery') $context_label = "Delivery";
+            else if ($sess->type === 'pickup') $context_label = "Retirada";
+            else $context_label = "Balcão";
+
+            // CORREÇÃO: Descrição rica com o nome da conta
+            $description = "Venda $context_label #$session_id ($account_name)";
+            
+            foreach ($payments as $pay) {
+                $amount = floatval($pay['amount']);
+                if ($amount <= 0.001) continue;
+
+                $current_payment_total += $amount;
+
+                $method_to_save = !empty($pay['method_id']) ? sanitize_text_field($pay['method_id']) : sanitize_text_field($pay['method']);
+
+                $wpdb->insert(
+                    $table_trans,
+                    [
+                        'register_id'   => $register_id,
+                        'session_id'    => $session_id,
+                        'type'          => 'sale',
+                        'amount'        => $amount,
+                        'method'        => $method_to_save, 
+                        'description'   => $description, // <--- NOVA DESCRIÇÃO
+                        'created_at'    => current_time('mysql')
+                    ]
+                );
             }
 
-            // Descrição rica com o nome da conta
-            $desc = "Pagamento PDV";
-            if ($account_name) $desc .= " - " . $account_name;
-
-            $wpdb->insert(
-                $wpdb->prefix . 'nativa_transactions',
-                array(
-                    'register_id' => $register_id,
-                    'session_id'  => $session_id,
-                    'type'        => 'sale',
-                    'method'      => $method,
-                    'amount'      => $total_paid,
-                    'description' => $desc, // Salva aqui!
-                    'created_at'  => current_time('mysql')
-                )
-            );
-
-            $remaining_debt = $wpdb->get_var($wpdb->prepare("SELECT SUM(line_total) FROM $items_table WHERE session_id = %d AND status != 'cancelled'", $session_id));
-            $session_closed = false;
+            $items_total = $wpdb->get_var($wpdb->prepare("SELECT SUM(line_total) FROM $table_items WHERE session_id = %d AND status != 'cancelled'", $session_id));
+            $order_total = (float)$items_total + (float)($sess->delivery_fee ?? 0);
             
-            if ( (float)$remaining_debt <= 0.01 ) {
-                $wpdb->update($wpdb->prefix . 'nativa_sessions', array('status' => 'paid', 'closed_at' => current_time('mysql')), array('id' => $session_id));
-                $table_id = $wpdb->get_var($wpdb->prepare("SELECT table_id FROM {$wpdb->prefix}nativa_sessions WHERE id = %d", $session_id));
-                if($table_id) $wpdb->update($wpdb->prefix . 'nativa_tables', ['status' => 'available'], ['id' => $table_id]);
-                $session_closed = true;
-            }
+            $total_paid_real = $previous_paid + $current_payment_total;
+            $remaining = $order_total - $total_paid_real;
 
-            if ( class_exists('Nativa_OneSignal') ) Nativa_OneSignal::send("Pagamento: R$ $total_paid ($account_name)", ['type' => 'order_update']);
+            if ( $remaining <= 0.05 ) {
+                $wpdb->update($table_sessions, ['status' => 'closed', 'closed_at' => current_time('mysql'), 'payment_info_json' => json_encode($payments)], ['id' => $session_id]);
+                if ( class_exists('Nativa_Loyalty') ) { (new Nativa_Loyalty())->confirm_points( $session_id ); }
+                if ( class_exists('Nativa_Notification_Service') ) { Nativa_Notification_Service::notify_status_change( $session_id, 'finished', $sess->client_id, $sess->type, $request_review ); }
+            }
 
             $wpdb->query('COMMIT');
-
-            return new WP_REST_Response([
-                'success' => true,
-                'message' => $session_closed ? 'Mesa encerrada.' : 'Pagamento registrado.',
-                'remaining_total' => (float)$remaining_debt,
-                'session_closed' => $session_closed
-            ], 200);
+            return new WP_REST_Response(['success' => true, 'remaining' => $remaining > 0 ? $remaining : 0], 200);
 
         } catch (Exception $e) {
             $wpdb->query('ROLLBACK');
-            return new WP_REST_Response(['success' => false, 'message' => 'Erro: ' . $e->getMessage()], 500);
+            return new WP_REST_Response(['success' => false, 'message' => $e->getMessage()], 400);
         }
     }
 
-    /**
-     * Endpoint 2: Integração Sicredi - Gerar Cobrança
-     */
+    // --- MÉTODOS AUXILIARES E PIX ---
+
     public function generate_pix_endpoint( $request ) {
-        $params = $request->get_json_params();
-        $session_id = isset($params['session_id']) ? (int)$params['session_id'] : 0;
-
-        if ( !$session_id ) return new WP_REST_Response(['success' => false, 'message' => 'Sessão inválida'], 400);
+        if ( ! class_exists('Nativa_Sicredi_Helper') ) require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-sicredi-helper.php';
         
+        $session_id = $request->get_param('session_id');
         global $wpdb;
         
-        // 1. Verifica cache no banco
-        $existing = $wpdb->get_row($wpdb->prepare("SELECT pix_string, pix_txid, updated_at FROM {$wpdb->prefix}nativa_sessions WHERE id = %d", $session_id));
-        
-        if ( !empty($existing->pix_string) ) {
-             return new WP_REST_Response([
-                'success' => true, 
-                'pix_copy_paste' => $existing->pix_string,
-                'txid' => $existing->pix_txid,
-                'created_at' => $existing->updated_at, // Envia timestamp original para o timer
-                'cached' => true
-            ], 200);
-        }
+        $total = $wpdb->get_var($wpdb->prepare("SELECT SUM(line_total) FROM {$wpdb->prefix}nativa_order_items WHERE session_id = %d", $session_id));
+        $fee = $wpdb->get_var($wpdb->prepare("SELECT delivery_fee FROM {$wpdb->prefix}nativa_sessions WHERE id = %d", $session_id));
+        $amount = (float)$total + (float)$fee;
 
-        // 2. Calcula total pendente
-        $total = $wpdb->get_var($wpdb->prepare(
-            "SELECT SUM(line_total) FROM {$wpdb->prefix}nativa_order_items WHERE session_id = %d AND status != 'cancelled' AND status != 'paid'",
-            $session_id
-        ));
-
-        $delivery_fee = $wpdb->get_var($wpdb->prepare("SELECT delivery_fee FROM {$wpdb->prefix}nativa_sessions WHERE id = %d", $session_id));
-        $total += (float)$delivery_fee;
-
-        if ( $total <= 0 ) return new WP_REST_Response(['success' => false, 'message' => 'Nada a pagar.'], 400);
-
-        // 3. Chama o Helper Sicredi
-        if ( ! class_exists('Nativa_Sicredi_Helper') ) {
-            require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-sicredi-helper.php';
-        }
-        
         $sicredi = new Nativa_Sicredi_Helper();
-        $result = $sicredi->create_charge( $session_id, $total );
+        $res = $sicredi->create_charge($session_id, $amount);
 
-        if ( is_wp_error($result) ) {
-            return new WP_REST_Response(['success' => false, 'message' => $result->get_error_message()], 500);
-        }
-
-        // Salva timestamp atual para controle do timeout
-        $now = current_time('mysql');
-        $wpdb->update(
-            $wpdb->prefix . 'nativa_sessions',
-            ['updated_at' => $now], // Atualiza horário para contar os 5 min a partir de agora
-            ['id' => $session_id]
-        );
-
-        // Injeta o created_at na resposta do helper
-        $result['created_at'] = $now;
-
-        return new WP_REST_Response($result, 200);
+        if ( is_wp_error($res) ) return new WP_REST_Response(['success'=>false, 'message'=>$res->get_error_message()], 400);
+        
+        return new WP_REST_Response([
+            'success' => true,
+            'pix_copy_paste' => $res['pix_copy_paste'],
+            'txid' => $res['txid'],
+            'created_at' => current_time('mysql')
+        ], 200);
     }
 
-    /**
-     * Endpoint 3: Checar Status (Polling) com Timeout de 5min
-     */
     public function check_pix_status_endpoint( $request ) {
+        if ( ! class_exists('Nativa_Sicredi_Helper') ) require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-sicredi-helper.php';
         $txid = $request->get_param('txid');
-        $session_id = (int)$request->get_param('session_id');
-
-        if ( ! class_exists('Nativa_Sicredi_Helper') ) {
-            require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-sicredi-helper.php';
-        }
-
         $sicredi = new Nativa_Sicredi_Helper();
-        $status_data = $sicredi->check_status($txid);
-
-        if ( is_wp_error($status_data) ) return new WP_REST_Response(['paid' => false], 200);
-
+        $status = $sicredi->check_status($txid);
+        
+        if ( is_wp_error($status) ) return new WP_REST_Response(['error'=>$status->get_error_message()], 400);
+        
+        return new WP_REST_Response($status, 200);
+    }
+    
+    public function cancel_transaction( $request ) {
         global $wpdb;
-        $session = $wpdb->get_row($wpdb->prepare("SELECT status, updated_at, type FROM {$wpdb->prefix}nativa_sessions WHERE id = %d", $session_id));
+        $params = $request->get_json_params();
+        $trans_id = (int)$params['transaction_id'];
+        $reason = sanitize_textarea_field($params['reason']);
 
-        // --- LÓGICA DE TIMEOUT (5 MINUTOS) ---
-        if ( !$status_data['paid'] && $session->status === 'pending_payment' ) {
-            $created_time = strtotime($session->updated_at); // Hora que gerou o Pix
-            $time_diff = current_time('timestamp') - $created_time;
+        $trans = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}nativa_transactions WHERE id = %d", $trans_id));
+        if (!$trans || $trans->type !== 'sale') return new WP_REST_Response(['success'=>false, 'message'=>'Transação inválida.'], 400);
 
-            if ( $time_diff > 305 ) { // 5 min + 5s tolerância
-                
-                // Se for Delivery, cancela para não travar a cozinha
-                if ( $session->type === 'delivery' ) {
-                    $wpdb->update(
-                        $wpdb->prefix . 'nativa_sessions', 
-                        ['status' => 'cancelled'], 
-                        ['id' => $session_id]
-                    );
-                    
-                    // Cancela itens também
-                    $wpdb->update(
-                        $wpdb->prefix . 'nativa_order_items', 
-                        ['status' => 'cancelled'], 
-                        ['session_id' => $session_id]
-                    );
-
-                    return new WP_REST_Response(['paid' => false, 'expired' => true, 'status' => 'cancelled'], 200);
-                }
-            }
+        // Verifica nota fiscal
+        $sess = $wpdb->get_row($wpdb->prepare("SELECT id, fiscal_status FROM {$wpdb->prefix}nativa_sessions WHERE id = %d", $trans->session_id));
+        if ($sess && $sess->fiscal_status === 'emitido') {
+            $wpdb->update($wpdb->prefix.'nativa_sessions', ['fiscal_status'=>'cancelado'], ['id'=>$sess->id]);
         }
 
-        // --- LÓGICA DE SUCESSO ---
-        if ( $status_data['paid'] ) {
-            
-            // 1. Marca itens como pagos
-            $wpdb->query($wpdb->prepare(
-                "UPDATE {$wpdb->prefix}nativa_order_items SET status = 'paid' WHERE session_id = %d AND status != 'cancelled'",
-                $session_id
-            ));
+        // Insere estorno
+        $wpdb->insert($wpdb->prefix.'nativa_transactions', [
+            'register_id' => $trans->register_id, 
+            'session_id'  => $trans->session_id,
+            'type'        => 'reversal', 
+            'method'      => $trans->method, 
+            'amount'      => -1 * abs($trans->amount),
+            'description' => "ESTORNO: $reason", 
+            'created_at'  => current_time('mysql')
+        ]);
 
-            // 2. Registra Transação
-            $wpdb->insert(
-                $wpdb->prefix . 'nativa_transactions',
-                [
-                    'session_id' => $session_id,
-                    'type' => 'sale',
-                    'method' => 'pix_sicredi',
-                    'amount' => 0, 
-                    'description' => 'Pix Sicredi (Automático)',
-                    'created_at' => current_time('mysql')
-                ]
-            );
-
-            // 3. Atualiza Status da Sessão
-            if ( $session->type === 'delivery' && $session->status === 'pending_payment' ) {
-                // DELIVERY: Libera para a Cozinha (Entra no Kanban)
-                $wpdb->update(
-                    $wpdb->prefix . 'nativa_sessions',
-                    ['status' => 'new', 'payment_status' => 'paid'],
-                    ['id' => $session_id]
-                );
-                
-                if ( class_exists('Nativa_OneSignal') ) {
-                    Nativa_OneSignal::send("Novo Pedido Delivery (Pix Pago) #$session_id", ['type' => 'new_order']);
-                }
-
-            } else {
-                // MESA: Marca como pago
-                $wpdb->update(
-                    $wpdb->prefix . 'nativa_sessions',
-                    ['status' => 'paid'],
-                    ['id' => $session_id]
-                );
-                
-                if ( class_exists('Nativa_OneSignal') ) {
-                    Nativa_OneSignal::send("Mesa #$session_id pagou via Pix", ['type' => 'order_update']);
-                }
-            }
-        }
-
-        return new WP_REST_Response($status_data, 200);
+        // Reabre sessão
+        $wpdb->update($wpdb->prefix.'nativa_sessions', ['status'=>'open', 'closed_at'=>null], ['id'=>$trans->session_id]);
+        
+        return new WP_REST_Response(['success'=>true, 'message'=>'Estorno realizado.'], 200);
     }
 }

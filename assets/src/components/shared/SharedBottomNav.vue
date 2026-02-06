@@ -1,60 +1,68 @@
 <template>
-  <div class="fixed bottom-6 left-1/2 -translate-x-1/2 w-auto max-w-[95vw] z-50">
-    
-    <transition name="slide-up-fade">
-        <div v-if="showManagementMenu" class="absolute bottom-[84px] left-0 w-full bg-surface-900/95 backdrop-blur-xl border border-surface-700 rounded-2xl shadow-2xl p-2 flex flex-col gap-1 overflow-hidden origin-bottom">
-            <div class="px-4 py-2 text-[10px] uppercase font-bold text-surface-500 tracking-widest border-b border-surface-800 mb-1">
-                Gestão & Configurações
+  <div>
+    <div 
+      v-if="shouldShow"
+      class="fixed bottom-4 h-16 bg-surface-2/95 backdrop-blur-xl border border-surface-3/30 rounded-full flex items-center z-40 shadow-[0_8px_30px_rgba(0,0,0,0.4)] safe-area-bottom transition-all duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] overflow-hidden"
+      :class="containerClasses"
+      @touchstart="handleTouchStart"
+      @touchend="handleTouchEnd"
+      @click="handleContainerClick"
+    >
+      
+      <transition name="fade-slide">
+        <div v-if="!isCollapsed" class="flex items-center justify-evenly w-full h-full">
+          <button 
+            v-for="item in navItems" 
+            :key="item.key"
+            @click.stop="onClick(item)"
+            class="relative flex flex-col items-center justify-center w-14 h-full transition-all duration-300 group"
+            :class="isActive(item) ? 'text-primary-500' : 'text-surface-400 hover:text-surface-200'"
+          >
+            <div 
+              class="flex items-center justify-center w-10 h-10 rounded-full transition-all duration-300"
+              :class="[
+                isActive(item) ? 'bg-primary-500/10 shadow-[0_0_15px_rgba(var(--primary-500-rgb),0.3)]' : 'bg-transparent',
+                item.highlight ? 'bg-surface-3 border border-surface-4/50 text-surface-200' : ''
+              ]"
+            >
+              <i :class="[item.icon, isActive(item) ? 'text-xl' : 'text-lg']"></i>
             </div>
-            
-            <div class="grid grid-cols-4 gap-2 p-2">
-                <button 
-                    v-for="item in managementItems" 
-                    :key="item.id"
-                    class="flex flex-col items-center justify-center gap-2 p-3 rounded-xl hover:bg-surface-800 transition-colors text-surface-400 hover:text-white"
-                    @click="handleAction(item)"
-                >
-                    <div class="w-10 h-10 rounded-full bg-surface-800 flex items-center justify-center text-lg border border-surface-700">
-                        <i :class="item.icon"></i>
-                    </div>
-                    <span class="text-[9px] font-bold text-center leading-tight">{{ item.shortLabel || item.label }}</span>
-                </button>
-            </div>
+
+            <span v-if="item.badge" class="absolute top-3 right-3 bg-red-500 text-white text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full border-2 border-surface-2 animate-bounce">
+              {{ item.badge }}
+            </span>
+          </button>
         </div>
-    </transition>
+      </transition>
 
-    <div v-if="displayItems.length === 0" class="bg-red-500 text-white p-2 rounded text-center text-xs font-bold">
-        ⚠️ DEBUG: Menu Vazio
+      <transition name="scale-in">
+        <div v-if="isCollapsed" class="absolute inset-0 flex items-center justify-center cursor-pointer">
+            <i class="fa-solid fa-angles-left text-primary-500 text-xl animate-pulse"></i>
+            
+            <span v-if="hasHiddenBadges" class="absolute top-3 right-3 w-3 h-3 bg-red-500 rounded-full border-2 border-surface-2"></span>
+        </div>
+      </transition>
+
     </div>
 
-    <div v-else class="bg-surface-900/90 backdrop-blur-md border border-surface-800 rounded-full shadow-2xl h-[64px] relative flex items-center px-2 gap-1">
-        
-        <div 
-            class="absolute h-[54px] bg-white rounded-full shadow-lg transition-all duration-300 ease-[cubic-bezier(0.16, 1, 0.3, 1)] z-0"
-            :style="activeIndicatorStyle"
-        ></div>
-
+    <BottomSheet 
+      v-model:visible="isMenuOpen"
+      title="Menu Gerencial"
+    >
+      <div class="p-4 grid grid-cols-4 gap-4 pb-8">
         <button 
-            v-for="(item, index) in displayItems" 
-            :key="item.id"
-            class="relative w-[54px] h-[54px] flex items-center justify-center z-10 transition-colors duration-200 group focus:outline-none tap-highlight-transparent"
-            @click="handleNavClick(item)"
+            v-for="tool in extraTools" 
+            :key="tool.route"
+            class="flex flex-col items-center gap-2 p-2 active:scale-95 transition-transform"
+            @click="navigate(tool.route)"
         >
-            <div class="relative flex items-center justify-center w-full h-full">
-                <i class="text-xl transition-transform duration-300" 
-                   :class="[
-                       item.icon,
-                       isActive(item) ? 'text-surface-950 scale-110' : 'text-surface-400 group-hover:text-surface-200 group-active:scale-90'
-                   ]"
-                ></i>
-
-                <span v-if="item.id === 'cart' && cartCount > 0" 
-                      class="absolute top-2 right-2 bg-red-600 text-white text-[9px] font-bold h-4 min-w-[16px] px-1 rounded-full flex items-center justify-center border border-surface-900 shadow-sm animate-bounce">
-                    {{ cartCount }}
-                </span>
+            <div class="w-12 h-12 rounded-[18px] bg-surface-2 border border-surface-3/20 flex items-center justify-center text-primary-400 shadow-sm">
+                <i :class="tool.icon" class="text-xl"></i>
             </div>
+            <span class="text-[10px] font-bold text-surface-300 text-center leading-tight">{{ tool.label }}</span>
         </button>
-    </div>
+      </div>
+    </BottomSheet>
   </div>
 </template>
 
@@ -63,128 +71,107 @@ import { ref, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useUserStore } from '@/stores/user-store';
 import { useCartStore } from '@/stores/cart-store';
+import { useNavigation } from '@/composables/useNavigation';
+import BottomSheet from '@/components/shared/BottomSheet.vue';
 
-const props = defineProps(['activeTab']); 
-const emit = defineEmits(['update:activeTab', 'trigger']);
-
+const emit = defineEmits(['trigger', 'action', 'update:activeTab']);
 const router = useRouter();
 const route = useRoute();
 const userStore = useUserStore();
 const cartStore = useCartStore();
 
-const showManagementMenu = ref(false);
+const { navItems, extraTools, isMenuOpen, handleAction } = useNavigation();
 
-const baseClientItems = [
-    { id: 'home', icon: 'fa-solid fa-house', route: '/home' },
-    { id: 'contact', icon: 'fa-brands fa-whatsapp', action: 'contact' },
-    { id: 'menu', icon: 'fa-solid fa-utensils', route: '/cardapio' },
-    { id: 'profile', icon: 'fa-solid fa-user', route: '/home?tab=profile' },
-    { id: 'cart', icon: 'fa-solid fa-cart-shopping', action: 'cart' }
-];
+// --- ESTADO DO COLAPSO ---
+const isCollapsed = ref(false);
+const touchStartX = ref(0);
+const SWIPE_THRESHOLD = 50; // Pixels para considerar um swipe
 
-const operationalItems = [
-    { id: 'tables', label: 'Mesas', icon: 'fa-solid fa-map', route: '/staff/tables', permission: 'canTables' },
-    { id: 'delivery', label: 'Delivery', icon: 'fa-solid fa-motorcycle', route: '/staff/delivery', permission: 'canDelivery' },
-];
+const isStaffArea = computed(() => route.path.startsWith('/staff'));
 
-const backofficeItems = [
-    { id: 'products', label: 'Produtos', shortLabel: 'Estoque', icon: 'fa-solid fa-boxes-stacked', route: '/staff/products', permission: 'canProducts' },
-    { id: 'cash-flow', label: 'Financeiro', shortLabel: 'Caixa', icon: 'fa-solid fa-sack-dollar', route: '/staff/cash-flow', permission: 'canCash' },
-    { id: 'customers', label: 'Clientes', shortLabel: 'CRM', icon: 'fa-solid fa-users', route: '/staff/customers', permission: 'canCustomers' },
-    { id: 'team', label: 'Equipe', shortLabel: 'Time', icon: 'fa-solid fa-id-badge', route: '/staff/team', permission: 'canTeam' },
-    { id: 'settings', label: 'Configurações', shortLabel: 'Config', icon: 'fa-solid fa-cog', route: '/staff/settings', permission: 'canSettings' }
-];
-
-const isStaffContext = computed(() => route.path.includes('/staff') || route.name === 'waiter-mode');
-
-const hasAccess = (item) => {
-    const flags = userStore.user?.flags || {};
-    if (flags.isAdmin) return true;
-    if (item.permission && flags[item.permission]) return true;
-    return false;
-};
-
-const displayItems = computed(() => {
-    if (!isStaffContext.value) {
-        const items = [...baseClientItems];
-        if (userStore.isStaff) items.push({ id: 'staff-mode', icon: 'fa-solid fa-arrows-rotate', action: 'switch-to-staff' });
-        return items;
-    }
-    const items = operationalItems.filter(item => hasAccess(item));
-    const allowedTools = backofficeItems.filter(item => hasAccess(item));
-    if (allowedTools.length > 0) items.push({ id: 'tools', icon: 'fa-solid fa-screwdriver-wrench', action: 'toggle-menu' });
-    items.push({ id: 'client-mode', icon: 'fa-solid fa-arrows-rotate', action: 'switch-to-client' });
-    return items;
+const shouldShow = computed(() => {
+    if (route.meta.hideNav) return false;
+    return isStaffArea.value ? userStore.isStaff : true;
 });
 
-const managementItems = computed(() => isStaffContext.value ? backofficeItems.filter(item => hasAccess(item)) : []);
-const cartCount = computed(() => cartStore.totalItems);
+// Classes dinâmicas para animar a largura e posição
+const containerClasses = computed(() => {
+    if (isCollapsed.value) {
+        // Recolhido: Encostado na direita, largura pequena
+        return 'right-4 w-16 justify-center px-0 hover:bg-surface-2 cursor-pointer'; 
+    }
+    // Expandido: Ocupa a largura toda (com margens)
+    return 'left-4 right-4 justify-evenly';
+});
 
-/**
- * Lógica de Ativação Refinada
- * Se o menu de ferramentas está aberto, APENAS o ícone 'tools' é considerado ativo.
- */
+// Verifica se tem algum badge importante escondido ao colapsar
+const hasHiddenBadges = computed(() => {
+    return navItems.value.some(item => item.badge > 0);
+});
+
+// --- LÓGICA DE TOQUE (SWIPE) ---
+
+const handleTouchStart = (e) => {
+    touchStartX.value = e.changedTouches[0].screenX;
+};
+
+const handleTouchEnd = (e) => {
+    const touchEndX = e.changedTouches[0].screenX;
+    const diff = touchEndX - touchStartX.value;
+
+    // Se arrastou da esquerda para direita (valor positivo) e foi maior que o limite
+    if (!isCollapsed.value && diff > SWIPE_THRESHOLD) {
+        isCollapsed.value = true;
+    }
+};
+
+const handleContainerClick = () => {
+    // Se estiver recolhido, qualquer clique expande
+    if (isCollapsed.value) {
+        isCollapsed.value = false;
+    }
+};
+
+// --- LÓGICA DE NAVEGAÇÃO ORIGINAL ---
+
 const isActive = (item) => {
-    if (showManagementMenu.value) {
-        return item.id === 'tools';
-    }
-    if (props.activeTab === item.id) return true;
-    if (item.route && route.path.startsWith(item.route)) {
-        if (item.id === 'home' && route.path !== '/home') return false;
-        return true;
-    }
+    if (item.key === 'account' && route.query.tab === 'profile') return true;
+    if (item.route && route.name === item.route && route.query.tab !== 'profile') return true;
+    if (item.key === 'cart' && cartStore.isOpen) return true;
+    if (item.key === 'menu_drawer' && isMenuOpen.value) return true;
     return false;
 };
 
-/**
- * Cálculo do Indicador
- * Usa pixels fixos (58px por item) para garantir o movimento exato do círculo.
- */
-const activeIndicatorStyle = computed(() => {
-    const items = displayItems.value;
-    const isMenuOpen = showManagementMenu.value; // Força reatividade quando o menu abre
-
-    const index = items.findIndex(item => isActive(item));
-    if (index === -1) return { opacity: 0 };
-
-    const itemWidth = 58; // 54px largura + 4px (gap-1)
-    const offset = 8;    // px-2 padding
-
-    return { 
-        width: '54px', 
-        left: `${(index * itemWidth) + offset}px`, 
-        opacity: 1 
-    };
-});
-
-const handleNavClick = (item) => {
-    if (item.action === 'toggle-menu') {
-        showManagementMenu.value = !showManagementMenu.value;
-    } else {
-        showManagementMenu.value = false;
-        handleAction(item);
+const onClick = (item) => {
+    // Se clicar em um item, não queremos colapsar, apenas executar a ação
+    if (item.action === 'triggerNotifications') {
+        emit('trigger', 'notifications');
+    }
+    else {
+        handleAction(item, emit);
     }
 };
 
-const handleAction = (item) => {
-    if (item.action === 'switch-to-client') {
-        router.push('/home');
-    } else if (item.action === 'switch-to-staff') {
-        const flags = userStore.user?.flags || {};
-        if (userStore.user?.role === 'nativa_waiter') router.push({ name: 'waiter-mode' }); 
-        else if (flags.canTables) router.push('/staff/tables');
-        else router.push('/staff/pdv'); 
-    } else if (item.action === 'cart' || item.action === 'contact') {
-        emit('trigger', item.action);
-    } else if (item.route) {
-        if (['profile', 'home', 'menu'].includes(item.id)) emit('update:activeTab', item.id);
-        router.push(item.route);
-    }
+const navigate = (routeName) => {
+    isMenuOpen.value = false;
+    router.push({ name: routeName });
 };
 </script>
 
 <style scoped>
-.tap-highlight-transparent { -webkit-tap-highlight-color: transparent; }
-.slide-up-fade-enter-active, .slide-up-fade-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.slide-up-fade-enter-from, .slide-up-fade-leave-to { transform: translateY(20px) scale(0.95); opacity: 0; }
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 20px); }
+
+.animate-slide-up { animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* Transições de conteúdo */
+.fade-slide-enter-active { transition: all 0.3s ease-out; transition-delay: 0.1s; }
+.fade-slide-leave-active { transition: all 0.1s ease-in; position: absolute; opacity: 0; }
+.fade-slide-enter-from { opacity: 0; transform: translateX(-10px); }
+.fade-slide-leave-to { opacity: 0; transform: translateX(10px); }
+
+.scale-in-enter-active { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); transition-delay: 0.1s; }
+.scale-in-leave-active { transition: all 0.1s ease; position: absolute; }
+.scale-in-enter-from { opacity: 0; transform: scale(0); }
+.scale-in-leave-to { opacity: 0; transform: scale(0); }
 </style>

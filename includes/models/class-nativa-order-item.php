@@ -1,12 +1,9 @@
 <?php
 /**
- * Model: Nativa Order Item
- * Gerencia os itens dentro de uma sessão.
+ * Model: Nativa Order Item (V2.2 - Suporte a Preço Promocional e Override de Preço)
  */
 
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
+if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 class Nativa_Order_Item {
 
@@ -23,13 +20,8 @@ class Nativa_Order_Item {
 
     public function create_table() {
         global $wpdb;
-
-        // Verifica se a tabela já existe para aplicar patches
-        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$this->table_name'") === $this->table_name;
-
         $charset_collate = $wpdb->get_charset_collate();
         
-        // ADICIONADO: Campo line_total para armazenar o valor final (ou saldo devedor) do item
         $sql = "CREATE TABLE $this->table_name (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             session_id bigint(20) NOT NULL,
@@ -49,38 +41,50 @@ class Nativa_Order_Item {
 
         require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
         dbDelta( $sql );
-
-        // Patch de segurança: Garante que a coluna exista mesmo se o dbDelta falhar na alteração
-        if ( $table_exists ) {
-            $column = $wpdb->get_results( "SHOW COLUMNS FROM $this->table_name LIKE 'line_total'" );
-            if ( empty( $column ) ) {
-                $wpdb->query( "ALTER TABLE $this->table_name ADD COLUMN line_total decimal(10,2) NOT NULL DEFAULT 0.00" );
-            }
-        }
     }
 
-    public function add_item( $session_id, $product_id, $qty = 1, $modifiers = null, $sub_account = 'Principal' ) {
+    /**
+     * Adiciona um item ao pedido.
+     * * @param int $session_id ID da Sessão
+     * @param int $product_id ID do Produto
+     * @param int $qty Quantidade
+     * @param array|null $modifiers Modificadores
+     * @param string $sub_account Sub-conta (para mesas)
+     * @param float|null $override_price Preço forçado (ex: 0.00 para Fidelidade). Se null, calcula do banco.
+     */
+    public function add_item( $session_id, $product_id, $qty = 1, $modifiers = null, $sub_account = 'Principal', $override_price = null ) {
         global $wpdb;
 
         $product = get_post( $product_id );
         if ( ! $product ) return new WP_Error( 'invalid_product', 'Produto não encontrado.' );
 
-        // 1. Preço Base
-        $price = get_post_meta( $product_id, 'price', true ) ?: get_post_meta( $product_id, 'produto_preco', true );
-        $price = (float) $price;
+        // 1. Definição do Preço Base
+        if ( ! is_null( $override_price ) ) {
+            // Se foi passado um preço forçado (ex: resgate de pontos), usa ele.
+            $unit_price = floatval( $override_price );
+        } else {
+            // Lógica Padrão: Preço Base vs Promocional
+            $price_base = (float) (get_post_meta( $product_id, 'produto_preco', true ) ?: get_post_meta( $product_id, 'price', true ));
+            $price_promo = (float) get_post_meta( $product_id, 'produto_preco_promocional', true );
+            
+            // Se existe promoção válida e menor que o preço base, usa ela
+            $unit_price = ($price_promo > 0 && $price_promo < $price_base) ? $price_promo : $price_base;
+        }
 
-        // 2. Calcula Adicionais (CORREÇÃO: O total deve incluir os modificadores)
+        // 2. Calcula Adicionais
         $modifiers_total = 0;
         if ( !empty($modifiers) && is_array($modifiers) ) {
             foreach ( $modifiers as $mod ) {
-                // Suporta formato objeto ou array
                 $m_price = is_array($mod) ? ($mod['price'] ?? 0) : ($mod->price ?? 0);
                 $modifiers_total += (float) $m_price;
             }
         }
 
-        // 3. Calcula Total da Linha (Inicialmente é o valor total a pagar)
-        $unit_final = $price + $modifiers_total;
+        // 3. Calcula Total da Linha
+        // Nota: Se for override_price = 0 (fidelidade), os modificadores devem ser cobrados?
+        // Geralmente sim, mas se quiser zerar tudo, o controller deve passar modifiers zerados ou tratamos aqui.
+        // Assumindo aqui que modificadores sempre somam. Se o unit_price for 0, cobra só os adicionais.
+        $unit_final = $unit_price + $modifiers_total;
         $line_total = $unit_final * $qty;
         
         $data = array(
@@ -88,8 +92,8 @@ class Nativa_Order_Item {
             'product_id'   => $product_id,
             'product_name' => $product->post_title,
             'quantity'     => $qty,
-            'unit_price'   => $price, // Salva o base
-            'line_total'   => $line_total, // Salva o total real (Base + Mods * Qtd)
+            'unit_price'   => $unit_price, // Salva o preço unitário efetivo
+            'line_total'   => $line_total,
             'modifiers_json' => $modifiers ? json_encode( $modifiers ) : null,
             'status'       => 'pending',
             'sub_account'  => $sub_account 
@@ -101,34 +105,25 @@ class Nativa_Order_Item {
 
     public function get_items_by_session( $session_id ) {
         global $wpdb;
-        return $wpdb->get_results( $wpdb->prepare( 
-            "SELECT * FROM $this->table_name WHERE session_id = %d AND status != 'cancelled'", 
-            $session_id 
-        ) );
+        return $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $this->table_name WHERE session_id = %d AND status != 'cancelled'", $session_id ) );
     }
 
     public function transfer_items( $item_ids, $target_session_id, $target_account ) {
         global $wpdb;
-
         if ( empty($item_ids) || !is_array($item_ids) ) return false;
-
-        $data = array( 'sub_account' => $target_account );
         
-        if ( $target_session_id ) {
-            $data['session_id'] = $target_session_id;
-        }
-
+        $data = array( 'sub_account' => $target_account );
+        if ( $target_session_id ) $data['session_id'] = $target_session_id;
+        
         $ids_sanitized = implode( ',', array_map( 'intval', $item_ids ) );
         
-        // Monta SET string
+        // Monta SET clause manualmente para evitar problemas com prepared statements em array
         $set_sql = [];
-        foreach($data as $col => $val) {
+        foreach($data as $col => $val) { 
             $set_sql[] = "$col = '" . esc_sql($val) . "'"; 
         }
         $set_string = implode(', ', $set_sql);
-
-        $sql = "UPDATE $this->table_name SET $set_string WHERE id IN ($ids_sanitized)";
         
-        return $wpdb->query( $sql );
+        return $wpdb->query( "UPDATE $this->table_name SET $set_string WHERE id IN ($ids_sanitized)" );
     }
 }

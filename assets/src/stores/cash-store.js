@@ -1,13 +1,16 @@
 import { defineStore } from "pinia";
 import api from "../services/api";
 import { notify } from "../services/notify";
+import { PrinterService } from "@/services/printer-service";
+import { useUserStore } from "@/stores/user-store";
+import { useFormat } from "@/composables/useFormat";
 
 export const useCashStore = defineStore("cash", {
   state: () => ({
     isOpen: false,
     statusChecked: false,
     register: null,
-    lastClosing: null, // <--- Armazena os dados do último fechamento (vindo do DB)
+    lastClosing: null,
     summary: { cash_balance: 0, total_in: 0, total_out: 0 },
     transactions: [],
     isLoading: false,
@@ -26,7 +29,7 @@ export const useCashStore = defineStore("cash", {
         } else {
           this.isOpen = false;
           this.register = null;
-          this.lastClosing = res.data.last_closing || null; // <--- Pega o mapa salvo no banco
+          this.lastClosing = res.data.last_closing || null;
         }
         this.statusChecked = true;
       } catch (e) {
@@ -70,20 +73,51 @@ export const useCashStore = defineStore("cash", {
       return false;
     },
 
-    // ATUALIZADO: Recebe o breakdown para salvar no banco
+    // Apenas UMA versão de closeRegister (a completa)
     async closeRegister(closingBalance, notes, breakdown = null) {
+      const userStore = useUserStore();
+      const { formatDate } = useFormat();
+
+      // Prepara dados para impressão
+      const expectedCash = this.summary.cash_balance || 0;
+      const countedCash = parseFloat(closingBalance);
+      const diff = countedCash - expectedCash;
+
+      const methodsArray = Object.entries(this.summary.methods || {}).map(
+        ([key, val]) => ({
+          method: key,
+          amount: val,
+        }),
+      );
+
+      const printData = {
+        operator: userStore.user?.name || "Operador",
+        opened_at: formatDate(this.register?.opened_at, true),
+        opening_balance: parseFloat(this.register?.opening_balance || 0),
+        total_in: this.summary.total_in,
+        total_out: this.summary.total_out,
+        methods_breakdown: methodsArray,
+        expected_cash: expectedCash,
+        counted_cash: countedCash,
+        diff: diff,
+        notes: notes,
+      };
+
       try {
         const res = await api.post("/cash/close", {
           closing_balance: closingBalance,
           notes,
-          breakdown, // Envia { bills: [], coins: [] } para a API
+          breakdown,
         });
 
         if (res.data.success) {
           notify("success", "Caixa Fechado", "Sessão encerrada com sucesso.");
+
+          // Dispara impressão
+          await PrinterService.printCashClosing(printData);
+
           this.isOpen = false;
           this.register = null;
-          // Atualiza o status para já pegar esse fechamento como "último" se reabrir em seguida
           await this.checkStatus();
           return true;
         }

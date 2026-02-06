@@ -1,6 +1,6 @@
 <?php
 /**
- * Model: Gestão de Estoque (Logs e Movimentações)
+ * Model: Gestão de Estoque
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -26,9 +26,9 @@ class Nativa_Stock {
             id bigint(20) NOT NULL AUTO_INCREMENT,
             product_id bigint(20) NOT NULL,
             user_id bigint(20) NOT NULL,
-            qty_change decimal(10,2) NOT NULL, /* Ex: -1, +10 */
-            balance_after decimal(10,2) NOT NULL, /* Saldo final após o ajuste */
-            reason varchar(50) NOT NULL, /* 'sale', 'supply', 'adjustment', 'waste' */
+            qty_change decimal(10,2) NOT NULL,
+            balance_after decimal(10,2) NOT NULL,
+            reason varchar(50) NOT NULL,
             note varchar(255) DEFAULT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY  (id),
@@ -39,45 +39,55 @@ class Nativa_Stock {
         dbDelta( $sql );
     }
 
-    /**
-     * Atualiza o estoque de um produto e gera log
-     */
-    public function adjust_stock( $product_id, $new_qty, $reason, $user_id = 0, $note = '' ) {
-        // 1. Verifica se o produto gerencia estoque
-        $manage_stock = get_post_meta( $product_id, 'nativa_estoque_ativo', true );
-        if ( ! $manage_stock ) return false; // Se não gerencia, ignora
+    public function adjust_stock( $product_id, $change_qty, $reason, $user_id = 0, $note = '' ) {
+        $is_controlled = get_post_meta( $product_id, 'nativa_stock_controlled', true );
+        
+        if ( $is_controlled === '' ) {
+            $is_controlled = get_post_meta( $product_id, 'nativa_estoque_ativo', true );
+        }
+
+        if ( !$is_controlled ) return false;
 
         $current_qty = (float) get_post_meta( $product_id, 'nativa_estoque_qtd', true );
-        $diff = $new_qty - $current_qty;
+        $new_qty = $current_qty + $change_qty;
 
-        if ( $diff == 0 ) return true; // Nada mudou
+        if ( $change_qty == 0 ) return true;
 
-        // 2. Atualiza o Meta Principal
         update_post_meta( $product_id, 'nativa_estoque_qtd', $new_qty );
 
-        // 3. Sincroniza com status V1 (Opcional, mas recomendado)
-        // Se zerou, marca como indisponível? 
-        // Por enquanto vamos deixar independente, mas podemos descomentar abaixo:
-        /*
-        if ( $new_qty <= 0 ) {
-            update_post_meta( $product_id, 'produto_disponibilidade', 'indisponivel' );
-        } elseif ( $new_qty > 0 && get_post_meta($product_id, 'produto_disponibilidade', true) === 'indisponivel' ) {
-            update_post_meta( $product_id, 'produto_disponibilidade', 'disponivel' );
+        $min_qty = (float) get_post_meta( $product_id, 'nativa_stock_min', true );
+        
+        if ( $min_qty > 0 && $new_qty <= $min_qty && $current_qty > $min_qty ) {
+            $this->trigger_low_stock_alert( $product_id, $new_qty );
         }
-        */
 
-        // 4. Grava o Log
         global $wpdb;
         $wpdb->insert( $this->table_name, array(
             'product_id'    => $product_id,
             'user_id'       => $user_id ?: get_current_user_id(),
-            'qty_change'    => $diff,
+            'qty_change'    => $change_qty,
             'balance_after' => $new_qty,
             'reason'        => $reason,
             'note'          => $note
         ));
 
         return true;
+    }
+
+    private function trigger_low_stock_alert( $product_id, $current_qty ) {
+        if ( class_exists('Nativa_Session_Log') ) {
+            $product = get_post( $product_id );
+            $name = $product ? $product->post_title : "Produto #$product_id";
+            
+            $logger = new Nativa_Session_Log();
+            $logger->log(
+                0, 
+                'stock_low', 
+                "Estoque Baixo: $name restam apenas $current_qty un.", 
+                ['product_id' => $product_id, 'qty' => $current_qty], 
+                'pending'
+            );
+        }
     }
 
     public function get_logs( $product_id ) {

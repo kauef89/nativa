@@ -7,7 +7,8 @@ export const useSessionStore = defineStore("session", {
   state: () => ({
     sessionId: null,
     sessionType: null,
-    identifier: null,
+    identifier: null, // Pode ser Número da Mesa ou Nome do Cliente
+    sessionStatus: null, // Novo: Status da sessão (new, preparing, etc)
     accounts: ["Principal"],
     currentAccount: "Principal",
     items: [],
@@ -47,9 +48,10 @@ export const useSessionStore = defineStore("session", {
       const idToUse = targetSessionId || this.sessionId || 0;
       const tableNum = this.identifier;
 
+      // Permite criar sem ID apenas se for Mesa (identifier numérico)
       if (!idToUse && !tableNum) {
         console.error(
-          "[SessionStore] Impossível criar conta: Sem ID de sessão e sem número de mesa.",
+          "[SessionStore] Impossível criar conta: Sem ID de sessão.",
         );
         notify("error", "Erro", "Sessão inválida.");
         return false;
@@ -58,7 +60,7 @@ export const useSessionStore = defineStore("session", {
       try {
         const res = await api.post("/create-account", {
           session_id: idToUse,
-          table_number: tableNum,
+          table_number: tableNum, // Pode ser null para delivery
           name: name,
           is_command: isCommand,
         });
@@ -113,8 +115,12 @@ export const useSessionStore = defineStore("session", {
 
     async resumeSession(sessionId, identifier = null, redirect = true) {
       this.sessionId = sessionId;
+      // Se tiver identificador explícito (ex: clique no grid), usa. Senão, espera o refresh.
       if (identifier) this.identifier = identifier;
-      this.sessionType = "table";
+      
+      // CORREÇÃO: Removemos a linha 'this.sessionType = table'.
+      // Agora o refreshSession vai buscar o tipo correto do backend.
+      
       await this.refreshSession();
 
       if (redirect) {
@@ -130,6 +136,14 @@ export const useSessionStore = defineStore("session", {
           `/session-items?session_id=${this.sessionId}`,
         );
         if (res.data.success) {
+          
+          // --- CORREÇÃO: Atualiza o estado com os dados do Backend ---
+          if (res.data.session_info) {
+              this.sessionType = res.data.session_info.type;
+              this.identifier = res.data.session_info.identifier;
+              this.sessionStatus = res.data.session_info.status;
+          }
+
           this.items = res.data.items;
           this.paidItems = res.data.paid_items || [];
           this.transactions = res.data.transactions || [];
@@ -137,8 +151,7 @@ export const useSessionStore = defineStore("session", {
           this.groupedItems = res.data.grouped_items || { Principal: [] };
           this.totals.total = res.data.total;
 
-          // CORREÇÃO: Limpeza de Seleção Fantasma
-          // Se o item não está mais na lista de ativos (foi cancelado/trocado), remove da seleção
+          // Limpeza de seleção: remove itens que não existem mais (trocados/cancelados)
           const activeIds = this.items.map((i) => i.id);
           this.selectedItemsForPayment = this.selectedItemsForPayment.filter(
             (selection) => activeIds.includes(selection.itemId),
@@ -162,13 +175,16 @@ export const useSessionStore = defineStore("session", {
 
     async addItem(product, qty = 1, modifiers = [], subAccount = null) {
       const targetAccount = subAccount || this.currentAccount;
+      
+      // Para mesas, enviamos table_number para criação lazy.
+      // Para delivery/outros, enviamos apenas session_id (já deve existir).
       const payload = {
         session_id: this.sessionId || 0,
         product_id: product.id,
         qty,
         modifiers,
         sub_account: targetAccount,
-        table_number: !this.sessionId ? this.identifier : null,
+        table_number: (this.sessionType === 'table' && !this.sessionId) ? this.identifier : null,
         type: this.sessionType || "table",
       };
 
@@ -204,6 +220,7 @@ export const useSessionStore = defineStore("session", {
       this.sessionId = null;
       this.sessionType = null;
       this.identifier = null;
+      this.sessionStatus = null;
       this.accounts = ["Principal"];
       this.currentAccount = "Principal";
       this.items = [];

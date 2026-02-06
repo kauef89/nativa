@@ -1,4 +1,5 @@
-/* 1. Camada Base do Tailwind (Reset) */
+/* src/style.css */
+
 @layer tailwind-base, primevue, tailwind-utilities;
 
 @layer tailwind-base {
@@ -10,75 +11,232 @@
   @tailwind utilities;
 }
 
-/* 2. Ajustes Globais e Fontes */
-body {
-  font-family: "Nunito", sans-serif;
-  background-color: #09090b; /* Zinc 950 */
-  color: #e4e4e7; /* Zinc 200 */
-  margin: 0;
-  padding: 0;
-  -webkit-font-smoothing: antialiased;
-  font-weight: 500; /* ACESSIBILIDADE: Peso mínimo Medium */
+/* --- SYSTEM LAYERS (NATIVA DS v2.0) --- */
+/* Forçamos cores específicas para garantir a escada de cinza correta */
+:root {
+    /* L0: Void (Base absoluta - Quase preto com toque marrom) */
+    --surface-base: #0c0a09; /* Stone 950 */
+    
+    /* L1: Canvas (Containers principais - Cinza quente muito escuro) */
+    --surface-1: #1c1917;    /* Stone 900 */
+    
+    /* L2: Well (Áreas de agrupamento - Cinza quente médio) */
+    --surface-2: #292524;    /* Stone 800 */
+    
+    /* L3: Object (Elementos interativos - Cinza quente claro) */
+    --surface-3: #44403c;    /* Stone 700 */
+    
+    /* L4: Highlight (Hover) */
+    --surface-4: #57534e;    /* Stone 600 */
 }
 
-/* 3. Garante que o App ocupe a tela toda (Crucial para o layout não quebrar) */
-html,
-body,
+/* Classes utilitárias */
+.bg-l0 { background-color: var(--surface-base); }
+.bg-l1 { background-color: var(--surface-1); }
+.bg-l2 { background-color: var(--surface-2); }
+.bg-l3 { background-color: var(--surface-3); }
+.bg-l4 { background-color: var(--surface-4); }
+
+/* Atualização do Body para usar a nova cor de texto quente */
+body {
+  font-family: "Nunito", sans-serif;
+  background-color: var(--surface-base);
+  color: #e7e5e4; /* Stone 200 - Texto off-white quente */
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
 #nativa-app {
   height: 100%;
   width: 100%;
-  /* overflow: hidden; /* Evita scroll duplo */
 }
 
-/* 4. Scrollbar Estilizada */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #18181b; /* surface-900 */
-}
-::-webkit-scrollbar-thumb {
-  background: #3f3f46; /* surface-700 */
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #52525b; /* surface-600 */
-}
-
-/* 4. Scrollbar Estilizada Global */
+/* --- 2. SCROLLBAR INVISÍVEL / OVERLAY --- */
+/* Firefox */
 * {
-  /* Para Firefox: scrollbar fina e cores */
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s ease;
 }
 
-/* Para navegadores Webkit (Chrome, Edge, Safari) */
+*:hover {
+  scrollbar-color: theme('colors.surface.600') transparent;
+}
+
+/* Webkit */
 ::-webkit-scrollbar {
-  width: 6px; /* Largura fina para vertical */
-  height: 6px; /* Altura fina para horizontal */
+  width: 6px;
+  height: 6px;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent; /* Remove o fundo da track para não parecer ter padding */
+  background: transparent;
+  margin: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1); /* Cor sutil quase invisível parada */
-  border-radius: 10px;
-  transition: background 0.3s;
+  background-color: transparent;
+  border-radius: 99px;
+  border: none;
 }
 
-/* Mostra a scrollbar com mais destaque apenas ao interagir ou rolar */
-*:hover::-webkit-scrollbar-thumb,
-::-webkit-scrollbar-thumb:active {
-  background: rgba(255, 255, 255, 0.3);
+*:hover::-webkit-scrollbar-thumb {
+  background-color: theme('colors.surface.600'); /* Token */
+  opacity: 0.5;
 }
 
-/* Garante que o conteúdo não "pule" quando a scrollbar aparece */
-html,
-body {
-  scrollbar-gutter: stable both-edges; /* Opcional: reserva espaço simétrico */
-  /* Ou, para o efeito de "sobreposição" total que você pediu: */
-  overflow: overlay;
+*:hover::-webkit-scrollbar-thumb:hover {
+  background-color: theme('colors.surface.500'); /* Token */
+}
+
+html, body, div, section, main, aside, ul, .p-dialog-content {
+  scrollbar-gutter: stable both-edges;
+}
+
+/* --- 3. COMPONENTES BORDERLESS & EXTRA BOLD --- */
+
+/* Botões */
+.p-button {
+    border-radius: 9999px !important;
+    font-weight: 900 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: none !important;
+    box-shadow: none !important;
+    font-size: 0.85rem;
+}
+
+/* Inputs */
+.p-inputtext, 
+.p-inputnumber-input, 
+.p-select, 
+.p-multiselect, 
+.p-textarea,
+.p-password-input {
+    border: none !important;
+    background-color: theme('colors.surface-2') !important; /* Token */
+    color: theme('colors.surface.0') !important;            /* Token */
+    transition: all 0.2s ease !important;
+    border-radius: 16px !important;
+    font-weight: 700 !important;
+}
+
+/* Foco */
+.p-inputtext:focus, .p-inputnumber-input:focus {
+    background-color: theme('colors.surface-3') !important; /* Token */
+    transform: scale(1.01);
+    outline: 2px solid theme('colors.primary.500') !important; /* Token */
+    outline-offset: -2px;
+}
+
+/* Cards */
+.surface-card {
+    background-color: theme('colors.surface-2'); /* Token */
+    border-radius: 24px;
+}
+
+/* Transições */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* --- 4. CORREÇÃO DE TABELAS (CLEAN) --- */
+
+.p-datatable {
+    --p-datatable-header-background: transparent;
+    --p-datatable-header-color: theme('colors.surface.400');
+    --p-datatable-row-background: transparent;
+    --p-datatable-row-hover-background: theme('colors.surface-3'); /* Com opacidade via CSS se precisar, ou cor sólida */
+    --p-datatable-body-cell-border-color: theme('colors.surface.0 / 0.05');
+}
+
+/* Header */
+.p-datatable .p-datatable-thead > tr > th {
+    background: transparent !important;
+    background-color: transparent !important;
+    color: theme('colors.surface.400') !important; /* Token */
+    border-bottom: 1px solid theme('colors.surface.0 / 0.05') !important; /* Token com Opacidade */
+    font-size: 0.75rem !important;
+    text-transform: uppercase !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.05em !important;
+    padding: 1rem !important;
+}
+
+.p-datatable .p-datatable-thead,
+.p-datatable .p-datatable-header {
+    background: transparent !important;
+    border: none !important;
+    color: theme('colors.surface.0') !important; /* Token */
+}
+
+/* Body */
+.p-datatable .p-datatable-tbody > tr {
+    background: transparent !important;
+    transition: background-color 0.2s ease !important;
+}
+
+.p-datatable .p-datatable-tbody > tr > td {
+    background: transparent !important;
+    color: theme('colors.surface.200') !important; /* Token */
+    border-bottom: 1px solid theme('colors.surface.0 / 0.03') !important;
+    padding: 1rem 1rem !important;
+}
+
+.p-datatable .p-datatable-tbody > tr:hover,
+.p-datatable .p-datatable-tbody > tr:hover > td {
+    background-color: theme('colors.surface.0 / 0.05') !important; /* Token Surface-3 aproximado */
+}
+
+.p-datatable .p-datatable-tbody > tr:last-child > td {
+    border-bottom: none !important;
+}
+
+/* Footer & Paginator */
+.p-datatable .p-datatable-footer,
+.p-paginator {
+    background: transparent !important;
+    border: none !important;
+    color: theme('colors.surface.400') !important; /* Token */
+    padding: 1rem !important;
+}
+
+.p-paginator .p-paginator-page,
+.p-paginator .p-paginator-first,
+.p-paginator .p-paginator-prev,
+.p-paginator .p-paginator-next,
+.p-paginator .p-paginator-last {
+    background-color: transparent !important;
+    color: theme('colors.surface.400') !important; /* Token */
+    border-radius: 99px !important;
+    font-weight: 700 !important;
+    min-width: 2rem !important;
+    height: 2rem !important;
+    margin: 0 2px !important;
+    border: none !important;
+}
+
+.p-paginator .p-paginator-page:hover,
+.p-paginator button:hover {
+    background-color: theme('colors.surface-3') !important; /* Token */
+    color: theme('colors.surface.0') !important;            /* Token */
+}
+
+.p-paginator .p-paginator-page.p-highlight {
+    background-color: theme('colors.primary.500') !important; /* Token */
+    color: theme('colors.primary.950') !important;            /* Token */
+}
+
+/* Empty & Loading */
+.p-datatable .p-datatable-emptymessage td {
+    background: transparent !important;
+    color: theme('colors.surface.500') !important; /* Token */
+    text-align: center !important;
+    border: none !important;
+    padding: 3rem !important;
+}
+
+.p-datatable .p-datatable-loading-overlay {
+    background-color: theme('colors.surface-base / 0.5') !important; /* Token */
+    backdrop-filter: blur(4px);
 }

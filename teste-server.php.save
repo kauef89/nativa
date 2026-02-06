@@ -1,0 +1,22 @@
+<?php
+echo "<h2>Diagnóstico de Servidor</h2>";
+
+// 1. Teste SOAP
+if (extension_loaded('soap')) {
+    echo "<p style='color:green'>✅ SOAP está ATIVO.</p>";
+} else {
+    echo "<p style='color:red'>❌ SOAP NÃO está ativo.</p>";
+}
+
+// 2. Teste Escrita
+$upload_dir = wp_upload_dir(); // Isso só funciona se o WP estiver carregado, se rodar direto não vai.
+// Vamos testar hardcoded para script isolado:
+$path = '../../uploads/'; 
+
+if (is_writable($path)) {
+    echo "<p style='color:green'>✅ Pasta Uploads tem permissão de escrita.</p>";
+} else {
+    echo "<p style='color:red'>❌ Sem permissão de escrita em: $path</p>";
+}
+?>rm ~/webapps/Nativa_PDV/wp-content/plugins/nativa/teste-server.php
+

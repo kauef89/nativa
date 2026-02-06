@@ -10,23 +10,23 @@
         <div class="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4 border border-red-500/30">
             <i class="fa-regular fa-clock text-red-500 text-3xl"></i>
         </div>
-        <h3 class="text-xl font-bold text-white mb-2">Tempo Esgotado</h3>
+        <h3 class="text-xl font-black text-white mb-2">Tempo Esgotado</h3>
         <p class="text-surface-400 text-sm mb-6 max-w-xs mx-auto">
             O tempo para pagamento deste pedido expirou e ele foi cancelado automaticamente.
         </p>
-        <Button label="Fazer Novo Pedido" class="!bg-surface-800 hover:!bg-surface-700 !border-none" @click="handleRestart" />
+        <Button label="Fazer Novo Pedido" class="!bg-surface-800 hover:!bg-surface-700 !border-none !font-black" @click="handleRestart" />
     </div>
 
     <div v-else-if="error" class="py-6">
         <i class="fa-solid fa-triangle-exclamation text-red-400 text-3xl mb-2"></i>
         <p class="text-white mb-4">{{ error }}</p>
-        <Button label="Tentar Novamente" class="!bg-surface-800" @click="generatePix" />
+        <Button label="Tentar Novamente" class="!bg-surface-800 font-black" @click="generatePix" />
     </div>
 
     <div v-else class="flex flex-col items-center">
         <div class="mb-6 flex flex-col items-center">
-            <div class="text-[10px] uppercase font-bold text-surface-500 tracking-widest mb-1">Expira em</div>
-            <div class="text-3xl font-mono font-black tabular-nums" :class="timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-white'">
+            <div class="text-[10px] uppercase font-black text-surface-500 tracking-widest mb-1">Expira em</div>
+            <div class="text-4xl font-black tabular-nums" :class="timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-white'">
                 {{ formattedTime }}
             </div>
         </div>
@@ -41,24 +41,24 @@
         </div>
 
         <div class="w-full max-w-sm">
-            <p class="text-[10px] text-surface-500 uppercase font-bold mb-2">Pix Copia e Cola</p>
+            <p class="text-[10px] text-surface-500 uppercase font-black mb-2">Pix Copia e Cola</p>
             <div class="flex gap-2">
                 <input 
                     type="text" 
                     readonly 
                     :value="pixString" 
-                    class="flex-1 bg-surface-950 border border-surface-800 rounded-lg px-3 text-xs text-surface-400 font-mono truncate focus:outline-none"
+                    class="flex-1 bg-surface-950 border border-surface-800 rounded-lg px-3 text-xs text-surface-300 font-bold tracking-wide truncate focus:outline-none"
                 >
                 <button 
                     @click="copyToClipboard" 
-                    class="bg-primary-600 hover:bg-primary-500 text-white px-4 rounded-lg font-bold text-xs transition-colors"
+                    class="bg-primary-600 hover:bg-primary-500 text-white px-4 rounded-lg font-black text-xs transition-colors uppercase tracking-wider"
                 >
-                    <i class="fa-regular fa-copy"></i>
+                    Copiar
                 </button>
             </div>
         </div>
 
-        <div class="mt-6 flex items-center gap-2 text-xs text-surface-500" v-if="!isPaid">
+        <div class="mt-6 flex items-center gap-2 text-xs text-surface-500 font-medium" v-if="!isPaid">
             <i class="fa-solid fa-rotate fa-spin"></i> Aguardando confirmação do banco...
         </div>
     </div>
@@ -88,8 +88,7 @@ const error = ref(null);
 const isPaid = ref(false);
 const expired = ref(false);
 
-// Timer State
-const timeLeft = ref(300); // Começa com 5 min por padrão
+const timeLeft = ref(300); 
 let pollingInterval = null;
 let timerInterval = null;
 
@@ -108,20 +107,7 @@ const generatePix = async () => {
             pixString.value = data.pix_copy_paste;
             txid.value = data.txid;
             
-            // Sincroniza o timer com o servidor
             if (data.created_at) {
-                const createdTime = new Date(data.created_at).getTime();
-                const now = new Date().getTime(); // Browser time (pode variar, ideal seria server time)
-                // Ajuste básico: backend deve mandar created_at em UTC ou timezone corrigido
-                // Para simplificar, calculamos diff em segundos assumindo sincronia razoável
-                // ou usamos apenas contador local se for novo.
-                
-                // Melhor abordagem: Backend manda "seconds_remaining" ou calculamos aqui
-                // Assumindo que created_at é recente
-                const elapsed = Math.floor((now - createdTime) / 1000);
-                // Se o delay for muito grande (fuso), reseta pra 300. Se for coerente, usa.
-                // Vou usar lógica simplificada: reseta o contador visual, 
-                // mas o backend que manda no cancelamento real.
                 timeLeft.value = 300; 
             }
             
@@ -165,7 +151,7 @@ const handleExpiration = () => {
     expired.value = true;
     stopPolling();
     stopTimer();
-    sessionStore.leaveSession(); // Limpa a sessão local pois foi cancelada
+    sessionStore.leaveSession(); 
 };
 
 const handleSuccess = () => {

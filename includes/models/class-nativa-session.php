@@ -1,12 +1,9 @@
 <?php
 /**
  * Model: Nativa Session
- * Gerencia as sessões (Mesas, Comandas, Delivery) e suas sub-contas.
  */
 
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
+if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 class Nativa_Session {
 
@@ -24,57 +21,66 @@ class Nativa_Session {
     public function create_table() {
         global $wpdb;
         
-        // Verifica se a tabela já existe
         $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$this->table_name'") === $this->table_name;
+        $charset_collate = $wpdb->get_charset_collate();
 
         if ( ! $table_exists ) {
-            // Se NÃO existe, cria do zero usando dbDelta
-            $charset_collate = $wpdb->get_charset_collate();
             $sql = "CREATE TABLE $this->table_name (
                 id bigint(20) NOT NULL AUTO_INCREMENT,
                 type varchar(50) NOT NULL,
                 table_number int(11) DEFAULT NULL,
                 client_name varchar(255) DEFAULT NULL,
+                client_id bigint(20) DEFAULT NULL,
                 status varchar(50) DEFAULT 'open',
                 delivery_address_json text DEFAULT NULL,
+                payment_info_json text DEFAULT NULL,
+                payment_status varchar(50) DEFAULT 'pending',
+                delivery_fee decimal(10,2) DEFAULT 0.00,
                 accounts_json text DEFAULT NULL,
+                pix_txid varchar(100) DEFAULT NULL,
+                pix_string text DEFAULT NULL,
+                fiscal_status varchar(20) DEFAULT NULL,
+                fiscal_url text DEFAULT NULL,
                 created_at datetime DEFAULT CURRENT_TIMESTAMP,
                 updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                closed_at datetime DEFAULT NULL,
                 PRIMARY KEY  (id)
             ) $charset_collate;";
 
             require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
             dbDelta( $sql );
         } else {
-            // Se JÁ existe, fazemos apenas ALTER TABLE manuais para evitar erro de Foreign Key do dbDelta
-            
-            // 1. Adiciona accounts_json
-            $col_accounts = $wpdb->get_results( "SHOW COLUMNS FROM $this->table_name LIKE 'accounts_json'" );
-            if ( empty( $col_accounts ) ) {
-                $wpdb->query( "ALTER TABLE $this->table_name ADD COLUMN accounts_json text DEFAULT NULL" );
-            }
-            
-            // 2. Adiciona client_name
-            $col_client = $wpdb->get_results( "SHOW COLUMNS FROM $this->table_name LIKE 'client_name'" );
-            if ( empty( $col_client ) ) {
-                $wpdb->query( "ALTER TABLE $this->table_name ADD COLUMN client_name varchar(255) DEFAULT NULL" );
-            }
+            $this->check_column('fiscal_status', 'varchar(20) DEFAULT NULL');
+            $this->check_column('fiscal_url', 'text DEFAULT NULL');
+            $this->check_column('client_name', 'varchar(255) DEFAULT NULL');
+            $this->check_column('payment_info_json', 'text DEFAULT NULL');
         }
     }
 
-    public function open( $type, $table_number = null, $delivery_data = null ) {
+    private function check_column($col, $def) {
         global $wpdb;
+        $check = $wpdb->get_results( "SHOW COLUMNS FROM $this->table_name LIKE '$col'" );
+        if ( empty( $check ) ) $wpdb->query( "ALTER TABLE $this->table_name ADD COLUMN $col $def" );
+    }
+
+    public function open( $type, $table_number = null, $data = [] ) {
+        global $wpdb;
+        $client_name = is_array($data) ? ($data['name'] ?? null) : $data;
         
-        $data = array(
+        $insert_data = array(
             'type' => $type,
             'table_number' => $table_number,
-            'client_name' => is_array($delivery_data) ? ($delivery_data['name'] ?? null) : $delivery_data,
-            'status' => 'open',
-            'delivery_address_json' => is_array($delivery_data) ? json_encode($delivery_data) : null,
+            'status' => is_array($data) ? ($data['status'] ?? 'open') : 'open',
+            'client_name' => $client_name,
+            'client_id' => is_array($data) ? ($data['client_id'] ?? null) : null,
+            'delivery_address_json' => (is_array($data) && isset($data['address'])) ? json_encode($data['address']) : null,
+            'payment_info_json' => (is_array($data) && isset($data['payments'])) ? json_encode($data['payments']) : null,
+            'delivery_fee' => (is_array($data) && isset($data['delivery_fee'])) ? $data['delivery_fee'] : 0.00,
+            'payment_status' => (is_array($data) && isset($data['payment_status'])) ? $data['payment_status'] : 'pending',
             'accounts_json' => json_encode(['Principal']) 
         );
 
-        $wpdb->insert( $this->table_name, $data );
+        $wpdb->insert( $this->table_name, $insert_data );
         return $wpdb->insert_id;
     }
 
@@ -82,7 +88,7 @@ class Nativa_Session {
         global $wpdb;
         return $wpdb->update( 
             $this->table_name, 
-            array( 'status' => 'closed' ), 
+            array( 'status' => 'closed', 'closed_at' => current_time('mysql') ), 
             array( 'id' => $session_id ) 
         );
     }
@@ -97,7 +103,6 @@ class Nativa_Session {
         $session = $this->get( $session_id );
         if ( ! $session ) return false;
 
-        // CORREÇÃO: Tratamento para valor nulo
         $json = !empty($session->accounts_json) ? $session->accounts_json : '[]';
         $accounts = json_decode( $json, true );
         

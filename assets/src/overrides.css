@@ -1,50 +1,208 @@
 /* src/overrides.css */
+/* NATIVA DESIGN SYSTEM - COMPONENT OVERRIDES v2.1 */
 
-/* 1. Força o container do AutoComplete a ser flexível e ocupar tudo */
+/* ==========================================================================
+   1. AUTOCOMPLETE & INPUTS
+   ========================================================================== */
+
+/* Remove estilos padrão para permitir customização total */
 .p-autocomplete {
   width: 100% !important;
   display: flex !important;
+  background: transparent !important;
+  border: none !important;
 }
 
-/* 2. Força o Input dentro dele a esticar */
 .p-autocomplete-input {
   width: 100% !important;
-  flex: 1 1 auto !important; /* Cresce para ocupar o espaço */
+  border-radius: 16px !important;
+  font-weight: 700 !important;
+  /* Herda o background do input component (geralmente surface-2) */
 }
 
-/* 3. Garante que o painel de sugestões não fique estreito demais */
-.p-autocomplete-panel {
-  min-width: 100% !important;
+/* Painel de Sugestões (Adicionado .p-autocomplete-overlay) */
+.p-autocomplete-panel,
+.p-autocomplete-overlay {
+  background-color: var(--surface-1) !important;
+  border: 1px solid var(--surface-2) !important;
+  color: theme("colors.surface.200") !important;
+  border-radius: 16px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6) !important;
+  margin-top: 8px;
+  overflow: hidden;
 }
 
-/* 4. Respiro entre ícone e textplaceholder da barra de pesquisa de CustomersView */
-input#pv_id_2 {
-  padding-left: 52px;
+/* Itens da Lista */
+.p-autocomplete-item {
+  color: theme("colors.surface.200") !important;
+  padding: 0.75rem 1rem !important;
+  transition: background-color 0.2s ease !important;
+  font-weight: 500 !important;
+  font-size: 0.875rem !important;
+  cursor: pointer !important;
 }
 
-/* --- CORREÇÃO DE MODAIS (GLOW + BORDAS) --- */
+/* Hover e Focus */
+.p-autocomplete-item:hover,
+.p-autocomplete-item.p-focus {
+  background-color: var(--surface-2) !important;
+  color: theme("colors.surface.0") !important;
+}
+
+/* Item Selecionado */
+.p-autocomplete-item[data-p-selected="true"] {
+  background-color: theme("colors.primary.500") !important;
+  color: theme("colors.surface.950") !important;
+}
+
+/* ==========================================================================
+   2. DROPDOWNS, SELECTS E MULTISELECTS
+   ========================================================================== */
+
+/* Container Flutuante (Overlay) */
+.p-dropdown-panel,
+.p-multiselect-panel,
+.p-select-list-container,
+.p-select-overlay {
+  background-color: var(--surface-1) !important;
+  border: 1px solid var(--surface-2) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6) !important;
+  margin-top: 4px !important;
+}
+
+/* Limpeza de Wrappers Internos */
+.p-dropdown-items-wrapper,
+.p-multiselect-items-wrapper,
+.p-select-list {
+  background: transparent !important;
+  padding: 0.5rem !important;
+}
+
+/* Header de Filtros (MultiSelect) */
+.p-multiselect-header {
+  background-color: var(--surface-1) !important;
+  border-bottom: 1px solid var(--surface-2) !important;
+  padding: 0.75rem !important;
+  color: theme("colors.surface.200") !important;
+  border-radius: 16px 16px 0 0 !important;
+}
+
+/* Itens da Lista */
+.p-dropdown-item,
+.p-multiselect-item,
+.p-select-option {
+  color: theme("colors.surface.200") !important;
+  border-radius: 8px !important;
+  margin-bottom: 2px !important;
+  padding: 0.75rem 1rem !important;
+  transition: all 0.2s ease !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+}
+
+/* Hover e Foco */
+.p-dropdown-item:hover,
+.p-dropdown-item.p-focus,
+.p-multiselect-item:hover,
+.p-multiselect-item.p-focus,
+.p-select-option:hover,
+.p-select-option.p-focus {
+  background-color: var(--surface-2) !important;
+  color: theme("colors.surface.0") !important;
+}
+
+/* Item Ativo/Selecionado (Highlight) */
+.p-dropdown-item.p-highlight,
+.p-multiselect-item.p-highlight,
+.p-select-option[data-p-selected="true"] {
+  background-color: theme("colors.primary.500") !important;
+  color: theme("colors.surface.950") !important;
+}
+
+/* ==========================================================================
+   3. MODAIS (DIALOGS)
+   ========================================================================== */
 
 .p-dialog {
-  /* Glow effect (Luz de fundo) */
-  box-shadow: 0 0 50px 10px rgba(255, 255, 255, 0.15) !important;
-
-  /* Garante que header/footer não cortem o arredondamento */
-  overflow: hidden !important;
-  border: 1px solid var(--surface-700) !important;
+  background-color: var(--surface-1) !important;
+  border: 1px solid var(--surface-2) !important; /* Definição sutil */
+  border-radius: 28px !important; /* Estilo iOS/Material You */
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85) !important;
+  color: theme("colors.surface.0") !important;
 }
 
-/* Força o background correto para evitar transparências indesejadas */
-.p-dialog-header,
-.p-dialog-content,
-.p-dialog-footer {
-  background-color: var(--surface-900) !important;
-  border-radius: 1rem !important;
-}
-
+/* Cabeçalho */
 .p-dialog-header {
-  border-bottom: 1px solid var(--surface-800) !important;
+  background-color: transparent !important;
+  padding: 1.5rem 1.5rem 0.5rem 1.5rem !important;
+  border: none !important;
+  color: theme("colors.surface.0") !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
 }
 
+.p-dialog-title {
+  font-weight: 900 !important;
+  font-size: 1.25rem !important;
+}
+
+/* Conteúdo */
+.p-dialog-content {
+  background-color: transparent !important;
+  padding: 0 1.5rem 1.5rem 1.5rem !important;
+}
+
+/* Rodapé */
 .p-dialog-footer {
-  border-top: 1px solid var(--surface-800) !important;
+  background-color: transparent !important;
+  padding: 1rem 1.5rem 1.5rem 1.5rem !important;
+  border-top: 1px solid var(--surface-2) !important; /* Separação sutil */
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 0.5rem !important;
+}
+
+/* ==========================================================================
+   4. TOASTS (NOTIFICAÇÕES)
+   ========================================================================== */
+
+.p-toast {
+  opacity: 1 !important; /* Garante visibilidade */
+}
+
+.p-toast-message {
+  border-radius: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(16px) !important;
+  background: rgba(
+    41,
+    37,
+    36,
+    0.95
+  ) !important; /* surface-2 com transparência */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+  color: theme("colors.surface.0") !important;
+  margin-bottom: 1rem !important;
+}
+
+/* Ícones dos Toasts */
+.p-toast-message-icon {
+  font-size: 1.25rem !important;
+}
+
+/* Cores específicas por tipo (Overrides opcionais se o preset não cobrir) */
+.p-toast-message-success .p-toast-message-icon {
+  color: theme("colors.green.400") !important;
+}
+.p-toast-message-error .p-toast-message-icon {
+  color: theme("colors.red.400") !important;
+}
+.p-toast-message-warn .p-toast-message-icon {
+  color: theme("colors.orange.400") !important;
+}
+.p-toast-message-info .p-toast-message-icon {
+  color: theme("colors.blue.400") !important;
 }

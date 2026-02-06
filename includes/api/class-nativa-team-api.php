@@ -31,43 +31,40 @@ class Nativa_Team_API {
         ));
     }
 
-    /**
-     * Lista a equipe (usuários com papéis de staff)
-     */
     public function get_team() {
         $staff_roles = ['nativa_manager', 'nativa_waiter', 'nativa_kitchen', 'nativa_driver', 'administrator'];
         $users = get_users( array( 'role__in' => $staff_roles ) );
         $data = [];
 
         foreach ( $users as $u ) {
-            $user_roles = $u->roles; // Array de roles
+            $user_roles = $u->roles; 
             $primary_role = !empty($user_roles) ? $user_roles[0] : 'customer';
             
+            // Recupera a cozinha principal salva
+            $main_kitchen = get_user_meta($u->ID, 'nativa_main_kitchen', true);
+
             $data[] = array(
                 'id' => $u->ID,
                 'name' => $u->display_name,
                 'email' => $u->user_email,
-                'roles' => $user_roles, // Envia array para o checkbox
+                'roles' => $user_roles, 
                 'role_label' => $this->get_role_label($primary_role) . (count($user_roles) > 1 ? ' (+)' : ''),
                 'avatar' => get_avatar_url($u->ID),
-                'pin' => get_user_meta($u->ID, 'nativa_access_pin', true) 
+                'pin' => get_user_meta($u->ID, 'nativa_access_pin', true),
+                'main_kitchen' => $main_kitchen ? (int)$main_kitchen : null // <--- NOVO
             );
         }
         return new WP_REST_Response(['success' => true, 'team' => $data], 200);
     }
 
-    /**
-     * Cria ou Atualiza um membro (com múltiplos papéis)
-     */
     public function create_update_member( $request ) {
         $params = $request->get_params();
         $id = isset($params['id']) ? (int)$params['id'] : 0;
         $email = sanitize_email($params['email']);
         $name = sanitize_text_field($params['name']);
         
-        // Recebe array de roles
         $roles = isset($params['roles']) ? $params['roles'] : [];
-        if ( is_string($roles) ) $roles = [ $roles ]; // Compatibilidade
+        if ( is_string($roles) ) $roles = [ $roles ]; 
 
         if ( empty($email) ) return new WP_REST_Response(['success'=>false, 'message'=>'E-mail obrigatório'], 400);
         if ( empty($roles) ) return new WP_REST_Response(['success'=>false, 'message'=>'Selecione ao menos uma função'], 400);
@@ -75,7 +72,6 @@ class Nativa_Team_API {
         $existing_user = get_user_by( 'email', $email );
         $user_id = $existing_user ? $existing_user->ID : 0;
 
-        // Cria ou Atualiza dados básicos
         if ( $user_id ) {
             if ( !empty($name) ) wp_update_user([ 'ID' => $user_id, 'display_name' => $name ]);
         } else {
@@ -85,21 +81,21 @@ class Nativa_Team_API {
             if ( !empty($name) ) wp_update_user([ 'ID' => $user_id, 'display_name' => $name ]);
         }
 
-        // Atualiza Papéis
         $u = new WP_User( $user_id );
-        
-        // Define o primeiro (remove anteriores)
         $u->set_role( $roles[0] );
-        
-        // Adiciona os demais
         for ( $i = 1; $i < count($roles); $i++ ) {
             $u->add_role( $roles[$i] );
         }
         
-        // Salva PIN
         if ( isset($params['pin']) ) {
             update_user_meta($user_id, 'nativa_access_pin', sanitize_text_field($params['pin']));
         }
+
+        // --- SALVA COZINHA PRINCIPAL ---
+        if ( isset($params['main_kitchen']) ) {
+            update_user_meta($user_id, 'nativa_main_kitchen', (int)$params['main_kitchen']);
+        }
+        // -------------------------------
 
         return new WP_REST_Response(['success'=>true, 'message'=>'Membro atualizado.'], 200);
     }

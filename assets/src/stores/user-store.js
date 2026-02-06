@@ -1,198 +1,161 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import api from "../services/api";
-import { notify } from "@/services/notify";
+import { notify } from "../services/notify";
+import router from "../router";
+import { OneSignalService } from "@/services/onesignal";
 
 export const useUserStore = defineStore("user", () => {
   const user = ref(null);
   const isLoggedIn = ref(false);
   const isLoading = ref(false);
-  const activeOrder = ref(null);
-  const isLoadingOrder = ref(false);
 
-  // --- GETTERS BASEADOS EM FLAGS ---
+  // --- Getters ---
+  const isStaff = computed(() => user.value?.flags?.isStaff || false);
+  const isAdmin = computed(() => user.value?.flags?.isAdmin || false);
 
-  // Agora verificamos se há flags. Se não houver (versão antiga), fazemos fallback para role.
-  const isStaff = computed(() => {
-    if (!user.value) return false;
-    // Se tiver flags, verifica se tem pelo menos uma permissão de staff
-    if (user.value.flags) {
-      const f = user.value.flags;
-      return (
-        f.isAdmin || f.canCash || f.canTables || f.canKitchen || f.canDelivery
-      );
-    }
-    // Fallback antigo
-    return [
-      "nativa_manager",
-      "nativa_waiter",
-      "nativa_kitchen",
-      "nativa_driver",
-      "administrator",
-    ].includes(user.value.role);
-  });
+  // --- Actions ---
 
-  const canManageCash = computed(
-    () => user.value?.flags?.canCash ?? user.value?.role === "nativa_manager",
-  );
-  const canManageTeam = computed(
-    () => user.value?.flags?.canTeam ?? user.value?.role === "nativa_manager",
-  );
-
-  // --- ACTIONS ---
-
-  const setUser = (userData) => {
-    user.value = userData;
-    isLoggedIn.value = true;
-    localStorage.setItem("nativa_user", JSON.stringify(userData));
-  };
-
+  // 1. Inicializa
   const initializeSession = () => {
     const storedUser = localStorage.getItem("nativa_user");
     if (storedUser) {
       try {
         user.value = JSON.parse(storedUser);
         isLoggedIn.value = true;
-
-        // Importante: atualizar perfil para pegar as flags novas
-        if (document.cookie.includes("wordpress_logged_in")) {
-          refreshProfile();
-        }
-        return true;
+        refreshProfile();
       } catch (e) {
-        console.error("Cache corrompido", e);
-        localStorage.removeItem("nativa_user");
+        logout(false);
       }
     }
-    return false;
   };
 
+  // 2. Refresh (Atualiza Nonce e Perfil)
   const refreshProfile = async () => {
     try {
-      // Usa o endpoint /auth/me que agora retorna flags
       const res = await api.get("/auth/me");
-      // O endpoint retorna o objeto direto, não {data: ...} dependendo da sua config axios,
-      // mas no AuthController::get_current_user ele retorna um array direto.
-      // O Axios encapsula em .data.
-
-      const userData = res.data; // O endpoint retorna o array direto
-
-      if (userData && userData.id) {
-        setUser({ ...user.value, ...userData });
+      if (res.data.success) {
+        // [CRÍTICO] Atualiza o Nonce global e do Axios
+        if (res.data.nonce) {
+          window.nativaData.nonce = res.data.nonce;
+          api.defaults.headers.common["X-WP-Nonce"] = res.data.nonce;
+        }
+        setUserLocal(res.data.user);
+        OneSignalService.checkUser();
       }
     } catch (e) {
-      if (e.response && e.response.status === 401) logout();
+      if (e.response && e.response.status === 401) {
+        logout(false);
+      }
     }
   };
 
-  // ... (manter loginWithGoogle, logout, fetchActiveOrder iguais) ...
-
+  // 3. LOGIN COM GOOGLE
   const loginWithGoogle = async (credential) => {
     isLoading.value = true;
     try {
+      // Headers limpos para evitar conflito de nonce antigo no login
+      const headers = { "Content-Type": "application/json" };
+      if (window.nativaData?.nonce) {
+        headers["X-WP-Nonce"] = window.nativaData.nonce;
+      }
+
+      // Usa fetch nativo para evitar interceptors sujos do Axios
       const response = await fetch(
         `${window.nativaData.root}nativa/v2/auth/google`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-WP-Nonce": window.nativaData.nonce,
-          },
+          headers: headers,
           body: JSON.stringify({ credential }),
         },
       );
+
       const data = await response.json();
+
       if (data.success) {
-        setUser(data.user);
-        if (data.nonce) window.nativaData.nonce = data.nonce;
+        // [CRÍTICO] Injeta o novo Nonce IMEDIATAMENTE no Axios
+        if (data.nonce) {
+          window.nativaData.nonce = data.nonce;
+          api.defaults.headers.common["X-WP-Nonce"] = data.nonce;
+        }
+
+        setUserLocal(data.user);
+        OneSignalService.checkUser();
+
+        // Feedback e Redirecionamento
+        if (isStaff.value) {
+          notify(
+            "success",
+            `Olá, ${data.user.name}`,
+            "Painel Staff carregado.",
+          );
+          router.push("/staff/tables");
+        } else {
+          notify("success", "Bem-vindo!", "Login realizado com sucesso.");
+          if (router.currentRoute.value.path === "/") {
+            router.push("/home");
+          }
+        }
         return true;
+      } else {
+        throw new Error(data.message || "Falha no login");
       }
-      return false;
     } catch (error) {
+      notify("error", "Erro de Login", "Não foi possível autenticar.");
+      console.error(error);
       return false;
     } finally {
       isLoading.value = false;
     }
   };
 
-  const logout = async () => {
+  // 4. LOGOUT (A CORREÇÃO ESTÁ AQUI)
+  const logout = async (callApi = true) => {
     try {
-      await fetch(`${window.nativaData.root}nativa/v2/auth/logout`, {
-        method: "POST",
-        headers: { "X-WP-Nonce": window.nativaData.nonce },
-      });
-    } catch (e) {}
-    user.value = null;
-    isLoggedIn.value = false;
-    localStorage.removeItem("nativa_user");
-    window.location.reload();
-  };
+      if (callApi) {
+        // Tenta avisar o backend (sem bloquear se falhar)
+        await api.post("/auth/logout").catch(() => {});
+      }
 
-  // Funções de pedido mantidas...
-  const fetchActiveOrder = async () => {
-    // ... (manter código original)
-    if (!isLoggedIn.value) return;
-    isLoadingOrder.value = true;
-    try {
-      const { data } = await api.get("/my-active-order");
-      if (data.success) activeOrder.value = data.order;
+      // Tenta limpar OneSignal
+      OneSignalService.logout();
+
+      // Limpa dados locais
+      user.value = null;
+      isLoggedIn.value = false;
+      localStorage.removeItem("nativa_user");
+
+      // Limpa credenciais da memória
+      window.nativaData.nonce = "";
+      delete api.defaults.headers.common["X-WP-Nonce"];
     } catch (e) {
+      console.error("Erro durante logout:", e);
     } finally {
-      isLoadingOrder.value = false;
+      // [BALA DE PRATA] Força o recarregamento da página.
+      // Isso zera a memória do navegador, Socket, OneSignal e Axios.
+      // Impede que o "lixo" do usuário anterior afete o próximo.
+      window.location.href = "/";
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
     }
   };
 
-  const cancelActiveOrder = async () => {
-    if (!activeOrder.value) return;
-    try {
-      const { data } = await api.post("/cancel-my-order", {
-        order_id: activeOrder.value.id,
-      });
-      if (data.success) {
-        notify("success", "Cancelado", "Pedido cancelado.");
-        activeOrder.value.status = "cancelado";
-      }
-    } catch (e) {
-      notify("error", "Erro", e.response?.data?.message);
-    }
-  };
-
-  const updatePayment = async (method, changeFor = 0) => {
-    // ... (manter código original)
-    if (!activeOrder.value) return;
-    try {
-      const { data } = await api.post("/update-payment", {
-        order_id: activeOrder.value.id,
-        method,
-        change_for: changeFor,
-      });
-      if (data.success) {
-        notify("success", "Sucesso", "Pagamento alterado.");
-        activeOrder.value.payment_method = method;
-        return true;
-      }
-    } catch (e) {
-      notify("error", "Erro", "Falha ao alterar.");
-    }
-    return false;
+  const setUserLocal = (userData) => {
+    user.value = userData;
+    isLoggedIn.value = true;
+    localStorage.setItem("nativa_user", JSON.stringify(userData));
   };
 
   return {
     user,
     isLoggedIn,
-    isLoading,
-    activeOrder,
-    isLoadingOrder,
     isStaff,
-    canManageCash,
-    canManageTeam, // Exportar novos getters
-    setUser,
+    isAdmin,
+    isLoading,
     initializeSession,
     refreshProfile,
     loginWithGoogle,
     logout,
-    fetchActiveOrder,
-    cancelActiveOrder,
-    updatePayment,
   };
 });

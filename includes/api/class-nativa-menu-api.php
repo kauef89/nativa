@@ -1,6 +1,7 @@
 <?php
 /**
- * API do Cardápio (Menu) - Com Filtros de Visibilidade e 18+
+ * API do Cardápio (Menu)
+ * CORREÇÃO: Remove filtragem serverside e expõe flags de visibilidade.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -25,7 +26,7 @@ class Nativa_Menu_API {
         if ( ! empty( $combos ) ) {
             $menu_structure[] = array(
                 'id'       => 'combos-virtual',
-                'name'     => '🔥 Combos e Promoções',
+                'name'     => 'Combos',
                 'slug'     => 'combos',
                 'image'    => null, 
                 'products' => $combos,
@@ -45,7 +46,6 @@ class Nativa_Menu_API {
             if ( strtolower($parent->name) === 'combos' ) continue;
 
             $parent_products = $this->get_products_for_term( $parent->term_id );
-            
             $thumb_id = get_term_meta( $parent->term_id, 'thumbnail_id', true );
             $image_url = $thumb_id ? wp_get_attachment_url( $thumb_id ) : null;
 
@@ -58,15 +58,13 @@ class Nativa_Menu_API {
             ) );
 
             $children_data = array();
-            
             foreach ( $children_categories as $child ) {
                 $child_products = $this->get_products_for_term( $child->term_id );
-                
                 if ( ! empty( $child_products ) ) {
                     $child_thumb = get_term_meta( $child->term_id, 'thumbnail_id', true );
                     $children_data[] = array(
                         'id'       => $child->term_id,
-                        'name'     => $child->name,
+                        'name'     => html_entity_decode( $child->name ),
                         'slug'     => $child->slug,
                         'image'    => $child_thumb ? wp_get_attachment_url( $child_thumb ) : null,
                         'products' => $child_products,
@@ -78,7 +76,7 @@ class Nativa_Menu_API {
             if ( ! empty( $parent_products ) || ! empty( $children_data ) ) {
                 $menu_structure[] = array(
                     'id'       => $parent->term_id,
-                    'name'     => $parent->name,
+                    'name'     => html_entity_decode( $parent->name ),
                     'slug'     => $parent->slug,
                     'image'    => $image_url,
                     'products' => $parent_products,
@@ -109,7 +107,6 @@ class Nativa_Menu_API {
         if ( $products_query->have_posts() ) {
             foreach ( $products_query->posts as $post ) {
                 $formatted = $this->format_product_data( $post->ID );
-                // Só adiciona se o formatador retornar dados (ele retorna null se for oculto ou não delivery)
                 if ( $formatted ) $products_data[] = $formatted;
             }
         }
@@ -129,26 +126,26 @@ class Nativa_Menu_API {
             $combos[] = array(
                 'id'           => $post->ID,
                 'type'         => 'combo',
-                'name'         => $post->post_title,
-                'description'  => get_field( 'nativa_combo_descricao', $post->ID ),
+                'name'         => html_entity_decode( $post->post_title ),
+                'description'  => html_entity_decode( get_field( 'nativa_combo_descricao', $post->ID ) ),
                 'price'        => $price,
                 'image'        => get_the_post_thumbnail_url( $post->ID, 'medium' ),
                 'is_available' => true,
-                'is_18_plus'   => false // Combos geralmente não são 18+ por padrão, mas pode ajustar
+                'is_18_plus'   => false,
+                'show_delivery'=> true, // Combos sempre visíveis por padrão
+                'show_table'   => true
             );
         }
         return $combos;
     }
 
     private function format_product_data( $post_id ) {
-        // 1. Checagem de Visibilidade Delivery
+        // --- CORREÇÃO: Não retorna null aqui. Apenas lê as flags. ---
         $show_delivery = get_post_meta( $post_id, 'nativa_exibir_delivery', true );
-        // Se for string vazia, assume true (legado). Se for '0', é false.
-        if ( $show_delivery === '0' ) return null;
+        $show_table    = get_post_meta( $post_id, 'nativa_exibir_mesa', true );
 
-        // 2. Checagem de Status
         $availability = get_post_meta( $post_id, 'produto_disponibilidade', true );
-        if ( $availability === 'oculto' ) return null;
+        if ( $availability === 'oculto' ) return null; // Oculto globalmente sai da lista
 
         $price_base = (float) get_post_meta( $post_id, 'produto_preco', true );
         $promo = (float) get_post_meta( $post_id, 'produto_preco_promocional', true );
@@ -156,26 +153,46 @@ class Nativa_Menu_API {
         
         $image_url = get_the_post_thumbnail_url( $post_id, 'medium' );
         $modifiers = $this->get_modifiers_raw( $post_id );
-
-        // 3. Flag 18+
         $is_18 = (bool) get_post_meta( $post_id, 'nativa_apenas_maiores', true );
+
+        // Lógica de Estação (ID ou Fallback)
+        $station = null;
+        $meta_station = get_post_meta( $post_id, 'nativa_estacao_impressao', true );
+        
+        if ( is_numeric($meta_station) && $meta_station > 0 ) {
+            $station = (int) $meta_station;
+        } 
+        
+        if ( empty($station) && function_exists('get_field') ) {
+            $field_val = get_field( 'nativa_estacao_impressao', $post_id );
+            if ( is_object($field_val) && isset($field_val->ID) ) {
+                $station = $field_val->ID;
+            } elseif ( is_numeric($field_val) ) {
+                $station = (int) $field_val;
+            }
+        }
+        if ( empty($station) ) { $station = 'default'; }
 
         return array(
             'id'           => $post_id,
             'type'         => 'product',
-            'name'         => get_the_title( $post_id ),
-            'description'  => get_the_excerpt( $post_id ),
+            'name'         => html_entity_decode( get_the_title( $post_id ) ),
+            'description'  => html_entity_decode( get_the_excerpt( $post_id ) ),
             'price'        => $final_price,
             'old_price'    => ($promo > 0) ? $price_base : null,
             'image'        => $image_url,
+            'station'      => $station,
             'is_available' => ($availability !== 'indisponivel'),
-            'is_18_plus'   => $is_18, // <--- Enviado para o Front
-            'modifiers'    => $modifiers
+            'is_18_plus'   => $is_18, 
+            'modifiers'    => $modifiers,
+            // --- NOVAS PROPS PARA O FRONT FILTRAR ---
+            'show_delivery' => ($show_delivery !== '0'), // Padrão True se vazio
+            'show_table'    => ($show_table !== '0')     // Padrão True se vazio
         );
     }
 
-    // ... (get_modifiers_raw mantém-se igual) ...
     private function get_modifiers_raw( $product_id ) {
+        // ... (Mantido igual à versão anterior que já estava com a lógica de enable_qty) ...
         $raw_relation = get_post_meta( $product_id, 'produto_grupos_adicionais', true );
         $group_ids = maybe_unserialize( $raw_relation );
 
@@ -187,6 +204,18 @@ class Nativa_Menu_API {
             if ( is_object( $gid ) ) $gid = $gid->ID;
             $gid = intval( $gid );
             if ( get_post_status( $gid ) !== 'publish' ) continue;
+
+            $is_active     = get_post_meta( $gid, 'nativa_grupo_ativo', true );
+            $show_delivery = get_post_meta( $gid, 'nativa_grupo_show_delivery', true );
+            $show_table    = get_post_meta( $gid, 'nativa_grupo_show_table', true );
+            $enable_qty    = get_post_meta( $gid, 'nativa_grupo_enable_qty', true );
+
+            if ( $is_active === '' )     $is_active = '1';
+            if ( $show_delivery === '' ) $show_delivery = '1';
+            if ( $show_table === '' )    $show_table = '1';
+            if ( $enable_qty === '' )    $enable_qty = '0';
+
+            if ( $is_active === '0' ) continue;
 
             $type = get_post_meta( $gid, 'grupo_adicional_tipo_grupo', true );
             $min  = (int) get_post_meta( $gid, 'grupo_adicional_min_selecao', true );
@@ -212,14 +241,22 @@ class Nativa_Menu_API {
                     $status = $disp ? $disp : 'disponivel';
                     if ( $status === 'oculto' || $status === 'indisponivel' ) continue;
 
-                    $group_items[] = array('name' => $nome, 'price' => (float) $preco);
+                    $group_items[] = array(
+                        'name' => html_entity_decode( $nome ),
+                        'price' => (float) $preco
+                    );
                 }
             }
 
             if ( ! empty( $group_items ) ) {
                 $modifiers_list[] = array(
-                    'id' => $gid, 'title' => $title, 'type' => $type,
+                    'id' => $gid, 
+                    'title' => html_entity_decode( $title ),
+                    'type' => $type,
                     'min' => $min, 'max' => $max, 'free_limit' => $free_limit, 'increment' => $increment,
+                    'show_delivery' => ($show_delivery === '1'),
+                    'show_table'    => ($show_table === '1'),
+                    'enable_qty'    => ($enable_qty === '1'),
                     'items' => $group_items
                 );
             }

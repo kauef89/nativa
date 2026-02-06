@@ -1,44 +1,62 @@
 import axios from "axios";
-import { notify } from "@/services/notify";
 
-const wpData = window.nativaData || {};
-
+// Cria a instância básica
 const api = axios.create({
-  baseURL: wpData.root + "nativa/v2",
+  baseURL: window.nativaData?.root + "nativa/v2",
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// 1. INTERCEPTADOR DE REQUISIÇÃO (Novo)
-// Injeta o Nonce atualizado a cada requisição
+// Interceptor de Requisição: Injeta o Nonce
 api.interceptors.request.use(
   (config) => {
-    if (window.nativaData && window.nativaData.nonce) {
-      config.headers["X-WP-Nonce"] = window.nativaData.nonce;
+    const currentNonce = window.nativaData?.nonce;
+    if (currentNonce) {
+      config.headers["X-WP-Nonce"] = currentNonce;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  },
+  (error) => Promise.reject(error),
 );
 
-// 2. INTERCEPTADOR DE RESPOSTA (Existente)
+// Interceptor de Resposta: AUTO-RECOVERY (Cura o erro 403)
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // Tratamento para 403 (Nonce inválido ou Sessão expirada)
-    if (error.response && error.response.status === 403) {
-      console.warn("Erro 403: Verificando nonce ou permissão.");
-      // Opcional: Se for erro de nonce ("cookie_nonce_invalid"), poderia tentar renovar ou deslogar
-    }
+  async (error) => {
+    const originalRequest = error.config;
 
-    const message = error.response?.data?.message || "Erro de comunicação.";
+    // Se for erro 403 de Nonce e ainda não tentamos recuperar
+    if (
+      error.response &&
+      error.response.status === 403 &&
+      error.response.data?.code === "rest_cookie_invalid_nonce" &&
+      !originalRequest._retry
+    ) {
+      originalRequest._retry = true; // Marca para não entrar em loop infinito
 
-    // Evita spam de notificação para erros "silenciosos" (opcional)
-    if (error.config && !error.config.silent) {
-      notify("error", "Erro na API", message);
+      try {
+        console.log("🔄 [API] Nonce expirado. Renovando...");
+
+        // Pede um nonce novo usando uma instância limpa do axios (sem interceptors)
+        const { data } = await axios.get(
+          window.nativaData.root + "nativa/v2/auth/nonce",
+        );
+
+        if (data.success && data.nonce) {
+          // Atualiza globalmente
+          window.nativaData.nonce = data.nonce;
+          api.defaults.headers.common["X-WP-Nonce"] = data.nonce;
+
+          // Atualiza a requisição que falhou e tenta de novo
+          originalRequest.headers["X-WP-Nonce"] = data.nonce;
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        console.error("🔴 [API] Falha crítica ao renovar nonce.", refreshError);
+        // Se falhar a renovação, redireciona para login (sessão morreu de vez)
+        window.location.href = "/";
+      }
     }
 
     return Promise.reject(error);

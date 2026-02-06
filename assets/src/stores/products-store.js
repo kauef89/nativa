@@ -7,14 +7,12 @@ export const useProductsStore = defineStore("products", {
     products: [],
     isLoading: false,
     filter: "",
-    categoryFilter: [], // <--- MUDANÇA: Agora é um Array
+    categoryFilter: [],
   }),
 
   getters: {
     filteredProducts: (state) => {
       let temp = [...state.products];
-
-      // 1. Filtro por Texto
       if (state.filter) {
         const lower = state.filter.toLowerCase();
         temp = temp.filter(
@@ -23,15 +21,11 @@ export const useProductsStore = defineStore("products", {
             (p.sku && p.sku.toLowerCase().includes(lower)),
         );
       }
-
-      // 2. Filtro por Categoria (Multi-Select)
-      // Verifica se há categorias selecionadas E se a categoria do produto está na lista
       if (state.categoryFilter && state.categoryFilter.length > 0) {
         temp = temp.filter((p) =>
           state.categoryFilter.includes(p.category_name),
         );
       }
-
       return temp;
     },
 
@@ -102,6 +96,60 @@ export const useProductsStore = defineStore("products", {
         notify("error", "Erro", "Falha na atualização em massa.");
         return false;
       }
+    },
+
+    // --- CSV ACTIONS ---
+
+    async exportCSV() {
+      try {
+        const { data } = await api.get("/products/export");
+        if (data.success && data.csv_content) {
+          const byteCharacters = atob(data.csv_content);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], {
+            type: "text/csv;charset=utf-8;",
+          });
+
+          const link = document.createElement("a");
+          const url = URL.createObjectURL(blob);
+          link.setAttribute("href", url);
+          link.setAttribute("download", data.filename || "produtos.csv");
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          notify("success", "Exportado", "Download iniciado.");
+        }
+      } catch (e) {
+        notify("error", "Erro", "Falha ao exportar CSV.");
+      }
+    },
+
+    async importCSV(file) {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const { data } = await api.post("/products/import", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        if (data.success) {
+          notify("success", "Importado", data.message);
+          await this.fetchProducts(); // Recarrega a lista
+          return true;
+        }
+      } catch (e) {
+        notify(
+          "error",
+          "Erro",
+          e.response?.data?.message || "Falha na importação.",
+        );
+      }
+      return false;
     },
   },
 });

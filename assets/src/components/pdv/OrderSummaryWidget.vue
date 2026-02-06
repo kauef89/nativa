@@ -1,141 +1,187 @@
 <template>
-  <div class="flex flex-col h-full bg-surface-900 text-white border-l border-surface-800">
-    <div class="p-6 bg-surface-950 border-b border-surface-800 shrink-0 shadow-sm">
-        <div class="flex justify-between items-start mb-4">
-            <div>
-                <h3 class="text-[10px] font-black text-surface-500 uppercase tracking-[0.2em]">Total Selecionado</h3>
-                <div class="text-4xl font-black text-primary-400 font-mono mt-1">
-                    R$ {{ formatMoney(sessionStore.totalSelectedForPayment) }}
-                </div>
-            </div>
-            <div class="text-right">
-                <span class="text-[10px] text-surface-500 font-bold uppercase tracking-widest block mb-1">Itens Marcados</span>
-                <span class="text-xl font-bold text-white">{{ sessionStore.selectedItemsForPayment.length }}</span>
-            </div>
+  <div class="flex flex-col h-full bg-transparent text-surface-0 relative">
+    
+    <div class="p-6 border-b border-surface-3/10 shrink-0 z-10">
+        <h3 class="text-[10px] font-black text-surface-500 uppercase tracking-widest mb-1">
+            Total Selecionado
+        </h3>
+        <div class="text-4xl font-black text-primary-400 leading-none">
+            {{ formatCurrency(sessionStore.totalSelectedForPayment) }}
         </div>
-
-        <div v-if="sessionStore.totals.total > 0" class="space-y-1.5">
-            <div class="flex justify-between text-[10px] font-bold uppercase text-surface-500">
-                <span>Saldo Devedor na Mesa</span>
-                <span>R$ {{ formatMoney(sessionStore.totals.total - sessionStore.totalSelectedForPayment) }}</span>
-            </div>
-            <div class="w-full h-1.5 bg-surface-800 rounded-full overflow-hidden">
-                <div 
-                    class="h-full bg-primary-500 transition-all duration-500" 
-                    :style="{ width: Math.min((sessionStore.totalSelectedForPayment / sessionStore.totals.total * 100), 100) + '%' }"
-                ></div>
-            </div>
+        <div v-if="sessionStore.clientName && sessionStore.clientName !== 'Cliente Balcão'" class="mt-3 flex items-center gap-2">
+            <span class="text-[10px] bg-surface-3 text-surface-300 px-2 py-1 rounded-lg uppercase font-bold tracking-wider">
+                <i class="fa-solid fa-user-tag mr-1"></i> {{ sessionStore.clientName }}
+            </span>
         </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin">
-        <div v-if="isLoadingMethods" class="flex justify-center p-10">
-            <i class="fa-solid fa-circle-notch fa-spin text-3xl text-primary-500"></i>
+    <div class="flex-1 overflow-hidden relative flex flex-col">
+        
+        <div v-if="!isOrderPaid" class="h-full flex flex-col">
+            <div v-if="sessionStore.totalSelectedForPayment <= 0" class="flex-1 flex flex-col items-center justify-center text-surface-600 opacity-50 p-6 text-center select-none">
+                <i class="fa-solid fa-arrow-left text-3xl mb-4 animate-pulse"></i>
+                <p class="text-xs font-black uppercase tracking-wide">Selecione itens à esquerda<br>para pagar.</p>
+            </div>
+
+            <div v-else class="flex-1 overflow-y-auto scrollbar-thin px-4">
+                <PaymentWidget 
+                    :totalDue="sessionStore.totalSelectedForPayment"
+                    mode="settlement"
+                    :showFooter="false" 
+                    :initialPayments="promisedPayments" 
+                    @update:payments="handlePaymentsUpdate"
+                    @validity-change="isPaymentValid = $event"
+                    class="!bg-transparent !border-none"
+                />
+            </div>
         </div>
 
-        <template v-else>
-            <div v-for="cat in paymentCategories" :key="cat.category" class="space-y-3">
-                <div class="flex items-center gap-3">
-                    <span class="text-[10px] font-black text-surface-600 uppercase tracking-widest whitespace-nowrap">
-                        {{ cat.category }}
-                    </span>
-                    <div class="h-px bg-surface-800 flex-1"></div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-2">
-                    <button 
-                        v-for="method in cat.methods" 
-                        :key="method.id"
-                        class="flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-2 group"
-                        :class="selectedMethod?.id === method.id 
-                            ? 'bg-primary-500/10 border-primary-500 text-primary-400' 
-                            : 'bg-surface-950 border-surface-800 text-surface-500 hover:border-surface-600'"
-                        @click="selectedMethod = method"
-                    >
-                        <i :class="[method.icon, selectedMethod?.id === method.id ? 'text-primary-400' : 'group-hover:text-white']" class="text-xl"></i>
-                        <span class="text-[10px] font-black uppercase text-center leading-tight">{{ method.label }}</span>
-                    </button>
-                </div>
+        <div v-else class="flex-1 flex flex-col items-center justify-center p-6 space-y-6 animate-fade-in">
+            <div class="w-24 h-24 bg-green-500/10 rounded-full flex items-center justify-center border-2 border-green-500/20 shadow-[0_0_40px_rgba(34,197,94,0.3)]">
+                <i class="fa-solid fa-check text-5xl text-green-500"></i>
             </div>
-        </template>
+            <div class="text-center">
+                <h3 class="text-2xl font-black text-surface-0">Conta Quitada</h3>
+                <p class="text-surface-400 text-sm font-bold mt-1">Pagamento registrado.</p>
+            </div>
+        </div>
+
     </div>
 
-    <div class="p-6 bg-surface-950 border-t border-surface-800">
+    <div v-if="!isOrderPaid" class="p-6 border-t border-surface-3/10 shrink-0 z-20">
         <Button 
             :label="isProcessing ? 'PROCESSANDO...' : 'CONFIRMAR PAGAMENTO'" 
             :icon="isProcessing ? 'fa-solid fa-circle-notch fa-spin' : 'fa-solid fa-check-double'" 
-            class="w-full !h-16 !text-lg !font-black !border-none shadow-lg transition-all active:scale-[0.98]"
-            :class="canPay ? '!bg-primary-600 hover:!bg-primary-500 !text-surface-950' : '!bg-surface-800 !text-surface-600'"
+            class="w-full !h-14 !text-lg !font-black !border-none shadow-xl transition-all !rounded-full"
+            :class="canPay ? '!bg-primary-600 hover:!bg-primary-500 !text-surface-950' : '!bg-surface-3 !text-surface-500 cursor-not-allowed'"
             :disabled="!canPay || isProcessing"
             @click="handlePayment"
         />
-        <p class="text-[9px] text-center text-surface-600 uppercase font-bold tracking-[0.15em] mt-4">
-            A mesa permanece aberta até a quitação total dos itens.
-        </p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useSessionStore } from '@/stores/session-store';
-import api from '@/services/api';
+import { useFormat } from '@/composables/useFormat'; 
+import api from '@/services/api'; 
 import { notify } from '@/services/notify';
 import Button from 'primevue/button';
+import InputMask from 'primevue/inputmask';
+import PaymentWidget from '@/components/shared/PaymentWidget.vue';
+
+// Definição dos Eventos
+const emit = defineEmits(['open-payment', 'toggle-history', 'payment-success', 'require-identification']);
 
 const sessionStore = useSessionStore();
-const isLoadingMethods = ref(false);
-const isProcessing = ref(false);
-const paymentCategories = ref([]);
-const selectedMethod = ref(null);
+const { formatCurrency, cleanDigits } = useFormat(); 
 
-const canPay = computed(() => {
-    return sessionStore.totalSelectedForPayment > 0 && selectedMethod.value;
+const isProcessing = ref(false);
+const isPaymentValid = ref(false);
+const currentPayments = ref([]); 
+
+// Estados Fiscais (Mantidos)
+const isEmitting = ref(false);
+const fiscalUrl = ref(null);
+
+const isOrderPaid = computed(() => {
+    if (sessionStore.sessionStatus === 'paid' || sessionStore.sessionStatus === 'closed') return true;
+    if (sessionStore.totals.total <= 0.01 && sessionStore.items.length > 0) return true;
+    return false;
 });
 
-const fetchPaymentMethods = async () => {
-    isLoadingMethods.value = true;
-    try {
-        const { data } = await api.get('/payment-methods?context=pos');
-        if (data.success) paymentCategories.value = data.categories;
-    } catch (e) {
-        notify('error', 'Erro', 'Falha ao carregar pagamentos.');
-    } finally {
-        isLoadingMethods.value = false;
+const promisedPayments = computed(() => {
+    if (!sessionStore.paymentsPromised || sessionStore.paymentsPromised.length === 0) return [];
+    
+    const totalSelected = sessionStore.totalSelectedForPayment;
+    const sessionTotal = sessionStore.totals.total;
+    
+    if (Math.abs(totalSelected - sessionTotal) < 1.0) {
+        return sessionStore.paymentsPromised;
     }
+    return [];
+});
+
+const handlePaymentsUpdate = (payments) => {
+    currentPayments.value = payments;
 };
 
+const canPay = computed(() => {
+    return sessionStore.totalSelectedForPayment > 0 && isPaymentValid.value;
+});
+
 const handlePayment = async () => {
+    // --- REGRA DE IDENTIFICAÇÃO (CORREÇÃO) ---
+    if (sessionStore.sessionType === 'counter' && sessionStore.currentAccount === 'Principal') {
+        notify('warn', 'Identificação Necessária', 'Identifique a conta antes de receber o pagamento.');
+        emit('require-identification');
+        return;
+    }
+    // ----------------------------
+
     if (!canPay.value) return;
-    
     isProcessing.value = true;
+
     try {
         const payload = {
             session_id: sessionStore.sessionId,
-            method: selectedMethod.value.type,
-            method_id: selectedMethod.value.id,
-            amount: sessionStore.totalSelectedForPayment,
-            items: sessionStore.selectedItemsForPayment // Envia os itens e valores parciais para o backend
+            payments: currentPayments.value, 
+            items: sessionStore.selectedItemsForPayment,
+            account: sessionStore.currentAccount
         };
 
         const { data } = await api.post('/pay-session', payload);
+        
         if (data.success) {
-            notify('success', 'Sucesso', 'Pagamento registrado.');
+            emit('payment-success', { 
+                amount: sessionStore.totalSelectedForPayment, 
+                payments: currentPayments.value 
+            });
+
             sessionStore.selectedItemsForPayment = []; 
-            await sessionStore.refreshSession(); // Atualiza o saldo restante dos itens
-            
-            if (sessionStore.totals.total <= 0) {
-                sessionStore.leaveSession(); // Fecha se tudo estiver pago
-            }
+            currentPayments.value = [];
+            await sessionStore.refreshSession();
         }
     } catch (e) {
-        notify('error', 'Erro', e.response?.data?.message || 'Falha no processamento.');
+        notify('error', 'Erro', e.response?.data?.message || 'Falha no pagamento.');
     } finally {
         isProcessing.value = false;
     }
 };
 
-const formatMoney = (val) => (parseFloat(val) || 0).toFixed(2).replace('.', ',');
+const handleEmitFiscal = async () => {
+    if (!confirm('Deseja emitir a NFC-e para esta venda?')) return;
 
-onMounted(fetchPaymentMethods);
+    isEmitting.value = true;
+    try {
+        const cleanCpf = cleanDigits(''); // Pode implementar input de CPF depois se necessário
+        const { data } = await api.post('/fiscal/emit-local', {
+            session_id: sessionStore.sessionId,
+            cpf: cleanCpf
+        });
+
+        if (data.success) {
+            fiscalUrl.value = data.danfe_url; 
+            notify('success', 'Nota Emitida', data.message || 'NFC-e autorizada!');
+            openDanfe();
+        } 
+    } catch (e) {
+        const msg = e.response?.data?.message || 'Erro ao comunicar com o emissor.';
+        notify('error', 'Erro Fiscal', msg);
+    } finally {
+        isEmitting.value = false;
+    }
+};
+
+const openDanfe = () => {
+    if (fiscalUrl.value) {
+        window.open(fiscalUrl.value, '_blank');
+    }
+};
 </script>
+
+<style scoped>
+.animate-fade-in { animation: fadeIn 0.5s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+</style>

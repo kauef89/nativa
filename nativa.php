@@ -3,7 +3,7 @@
  * Plugin Name:       Nativa
  * Plugin URI:        https://pastelarianativa.com.br
  * Description:       Núcleo do Sistema Comercial e PDV (V2). Gerencia Pedidos, Mesas, Delivery e Integrações de Hardware.
- * Version:           2.0.2
+ * Version:           2.1.0
  * Author:            Kauê Friedrich
  * Author URI:        https://pastelarianativa.com.br
  * Text Domain:       nativa
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'NATIVA_VERSION', '2.0.2' );
+define( 'NATIVA_VERSION', '2.1.0' );
 define( 'NATIVA_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'NATIVA_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'NATIVA_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -57,12 +57,27 @@ class Nativa_Core {
         // NOVO: Model de Auditoria e Logs (Timeline)
         require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-session-log.php';
         
+        // NOVO: Logística (Cozinhas e Impressoras)
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-logistica-cpt.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-logistica-fields.php';
+
+        // NOVO: Compras e Insumos
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-purchases-cpt.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-shopping-list.php';
+
         // --- Classes Utilitárias e Configuração ---
         require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-onesignal.php';
+        // --- NOVAS CLASSES DE SERVIÇO ---
+        require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-notification-service.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-order-service.php';
+        
         require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-roles.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/admin/class-nativa-admin-page.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/frontend/class-nativa-frontend-loader.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-gov-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-loyalty.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-offer-cpt.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-print-log.php';
 
         // --- APIs REST (Endpoints) ---
         require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-menu-api.php';
@@ -81,6 +96,22 @@ class Nativa_Core {
         require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-settings-api.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-auth-controller.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-onboarding-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-offers-api.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-fiscal-local-controller.php';
+        
+        // --- FISCAL SC (PAF-NFCe) ---
+        // Adicionado para atender requisitos de homologação SC
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-fiscal-sc-controller.php';
+
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-loyalty-controller.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-print-api.php';
+        
+        
+        // NOVO: API de Logística
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-logistica-api.php';
+
+        // NOVO: API de Compras
+        require_once NATIVA_PLUGIN_DIR . 'includes/api/class-nativa-purchases-api.php';
     }
 
     private function define_hooks() {
@@ -115,10 +146,29 @@ class Nativa_Core {
         $mesa_fields = new Nativa_Mesa_Fields();
         $mesa_fields->init();
 
+        $loyalty = new Nativa_Loyalty();
+        $loyalty->init();
+
+        $nativa_offers_cpt = new Nativa_Offer_CPT();
+        $nativa_offers_cpt->init();
+
+        $print_log = new Nativa_Print_Log();
+        $print_log->init();
+
+        // NOVO: Inicializa Logística (Cozinhas e Impressoras)
+        $logistica_cpt = new Nativa_Logistica_CPT();
+        $logistica_cpt->init();
+
+        $logistica_fields = new Nativa_Logistica_Fields();
+        $logistica_fields->init();
+
+        // NOVO: Inicializa Compras (Insumos)
+        $purchases_cpt = new Nativa_Purchases_CPT();
+        $purchases_cpt->init();
+
         // Inicializa a tabela de logs
         if ( class_exists('Nativa_Session_Log') ) {
             $log_model = new Nativa_Session_Log();
-            // A criação da tabela idealmente ocorre no activate, mas mantemos o init da classe se houver hooks
         }
 
         Nativa_Roles::init();
@@ -142,7 +192,14 @@ class Nativa_Core {
                 new Nativa_Team_API(),
                 new Nativa_Settings_API(),
                 new Nativa_Auth_Controller(),
-                new Nativa_Onboarding_API()
+                new Nativa_Onboarding_API(),
+                new Nativa_Loyalty_Controller(),
+                new Nativa_Offers_API(),
+                new Nativa_Fiscal_Local_Controller(),
+                new Nativa_Fiscal_SC_Controller(), // <--- Registro da API SC
+                new Nativa_Print_API(),
+                new Nativa_Logistica_API(),
+                new Nativa_Purchases_API(),
             ];
 
             foreach ($apis as $api) {
@@ -176,9 +233,10 @@ class Nativa_Core {
         require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-cash-register.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-stock.php';
         require_once NATIVA_PLUGIN_DIR . 'includes/classes/class-nativa-roles.php';
-        
-        // Carrega o novo model para criar a tabela no activate
         require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-session-log.php'; 
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-loyalty.php';
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-print-log.php'; 
+        require_once NATIVA_PLUGIN_DIR . 'includes/models/class-nativa-shopping-list.php';
         
         $session = new Nativa_Session();
         $session->create_table();
@@ -192,15 +250,37 @@ class Nativa_Core {
         $stock = new Nativa_Stock();
         $stock->create_table();
         
-        $logs = new Nativa_Session_Log(); // Cria a tabela de logs
+        $logs = new Nativa_Session_Log();
         $logs->create_table();
+
+        $loyalty = new Nativa_Loyalty();
+        $loyalty->create_table();
+        
+        $print = new Nativa_Print_Log(); 
+        $print->create_table();
+
+        $shopping = new Nativa_Shopping_List();
+        $shopping->create_table();
+
+        // Agendar Cron de Fidelidade
+        if ( ! wp_next_scheduled( 'nativa_daily_loyalty_check' ) ) {
+            wp_schedule_event( time(), 'daily', 'nativa_daily_loyalty_check' );
+        }
         
         Nativa_Roles::add_custom_roles();
         flush_rewrite_rules();
     }
+
+    /**
+     * Roda ao DESATIVAR o plugin.
+     */
+    public static function deactivate() {
+        wp_clear_scheduled_hook( 'nativa_daily_loyalty_check' );
+    }
 }
 
 register_activation_hook( __FILE__, array( 'Nativa_Core', 'activate' ) );
+register_deactivation_hook( __FILE__, array( 'Nativa_Core', 'deactivate' ) );
 
 function run_nativa() {
     $plugin = Nativa_Core::get_instance();

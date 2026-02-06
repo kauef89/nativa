@@ -9,7 +9,7 @@ class Nativa_Payment_Method {
 
     public function init() {
         add_action( 'init', array( $this, 'register_cpt' ) );
-        add_action( 'init', array( $this, 'register_taxonomy' ) ); // Nova Taxonomia
+        add_action( 'init', array( $this, 'register_taxonomy' ) );
         add_action( 'acf/init', array( $this, 'register_acf_fields' ) );
         add_action( 'rest_api_init', array( $this, 'register_api_routes' ) );
     }
@@ -26,25 +26,19 @@ class Nativa_Payment_Method {
                 'new_item'           => 'Nova Forma',
                 'view_item'          => 'Ver Forma',
                 'search_items'       => 'Buscar Formas',
-                'not_found'          => 'Nenhuma forma encontrada',
-                'not_found_in_trash' => 'Nenhuma forma na lixeira',
                 'all_items'          => 'Todas as Formas'
             ),
             'public'              => false, 
-            'show_ui'             => true,  // Exibe a interface
-            'show_in_menu'        => true,  // Exibe no menu
+            'show_ui'             => true,
+            'show_in_menu'        => true,
             'show_in_admin_bar'   => true,
-            'capability_type'     => 'post', // Usa permissões básicas de Post
-            'map_meta_cap'        => true,   // <--- O FIX: Mapeia permissões corretamente
+            'capability_type'     => 'post',
+            'map_meta_cap'        => true,
             'hierarchical'        => false,
             'query_var'           => true,
             'menu_icon'           => 'dashicons-money-alt',
-            'supports'            => array( 'title' ), // Suporta título (o resto é ACF)
+            'supports'            => array( 'title' ),
             'menu_position'       => 5,
-            'can_export'          => true,
-            'has_archive'         => false,
-            'exclude_from_search' => true,
-            'publicly_queryable'  => false,
         ));
     }
     
@@ -140,21 +134,36 @@ class Nativa_Payment_Method {
     public function get_methods_endpoint( $request ) {
         $context = $request->get_param('context') ?: 'pos'; // 'pos' ou 'delivery'
 
+        // CORREÇÃO: Removemos a meta_query que excluía posts sem meta salvo.
+        // Buscamos TODOS e filtramos no PHP via get_field() que respeita defaults.
         $args = array(
             'post_type'      => 'nativa_payment',
             'post_status'    => 'publish',
             'posts_per_page' => -1,
-            'meta_query'     => array(
-                'relation' => 'AND',
-                array( 'key' => 'is_active', 'value' => '1', 'compare' => '=' ),
-                array( 'key' => ($context === 'pos' ? 'show_on_pos' : 'show_on_delivery'), 'value' => '1', 'compare' => '=' )
-            )
+            'orderby'        => 'menu_order title',
+            'order'          => 'ASC',
         );
 
         $posts = get_posts( $args );
         $structured_data = array();
 
         foreach ( $posts as $post ) {
+            // 1. Verifica se está ativo
+            // get_field retorna o valor padrão (1) se o meta não existir no banco
+            $is_active = get_field( 'is_active', $post->ID );
+            // ACF retorna boolean true/false ou '1'/'0' dependendo da versão
+            if ( $is_active === false || $is_active === '0' ) continue;
+
+            // 2. Verifica contexto
+            if ( $context === 'pos' ) {
+                $show = get_field( 'show_on_pos', $post->ID );
+                if ( $show === false || $show === '0' ) continue;
+            } else {
+                $show = get_field( 'show_on_delivery', $post->ID );
+                if ( $show === false || $show === '0' ) continue;
+            }
+
+            // 3. Organiza Categorias
             $cat_terms = wp_get_post_terms( $post->ID, 'nativa_payment_cat' );
             $cat_name = ! empty( $cat_terms ) ? $cat_terms[0]->name : 'Geral';
             $cat_id   = ! empty( $cat_terms ) ? $cat_terms[0]->term_id : 0;
@@ -169,6 +178,7 @@ class Nativa_Payment_Method {
             $structured_data[$cat_id]['methods'][] = array(
                 'id'    => $post->ID,
                 'label' => $post->post_title,
+                // Aqui está a chave: lê o campo ACF corretamente
                 'type'  => get_field( 'nativa_payment_type', $post->ID ) ?: 'manual',
                 'icon'  => get_field( 'nativa_payment_icon', $post->ID ) ?: 'fa-solid fa-credit-card'
             );

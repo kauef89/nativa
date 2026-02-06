@@ -18,23 +18,23 @@
             <div class="flex justify-between items-end">
                 <div>
                     <h3 class="text-xl font-black text-white tracking-tight">Pedir Novamente</h3>
-                    <p class="text-surface-400 text-sm">Confirme os itens para adicionar ao carrinho.</p>
+                    <p class="text-surface-400 text-sm font-medium">Confirme os itens para adicionar ao carrinho.</p>
                 </div>
                 <div v-if="!isLoading" class="text-right">
                     <div class="text-xs text-surface-400 font-bold uppercase tracking-wider">Total Atual</div>
-                    <div class="text-xl font-bold text-primary-400">R$ {{ formatMoney(totalSelected) }}</div>
+                    <div class="text-xl font-black text-primary-400">{{ formatCurrency(totalSelected) }}</div>
                 </div>
             </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-6 pt-2 space-y-3 scrollbar-thin relative z-10">
+        <div class="flex-1 overflow-y-auto p-6 pt-2 space-y-3 relative z-10">
             
             <div v-if="isLoading" class="flex flex-col items-center justify-center py-10 space-y-4">
                 <i class="fa-solid fa-circle-notch fa-spin text-3xl text-primary-500"></i>
-                <span class="text-surface-400 text-sm animate-pulse">Verificando disponibilidade...</span>
+                <span class="text-surface-400 text-sm animate-pulse font-medium">Verificando disponibilidade...</span>
             </div>
 
-            <div v-else-if="items.length === 0" class="text-center py-10 text-surface-500">
+            <div v-else-if="items.length === 0" class="text-center py-10 text-surface-500 font-medium">
                 Não foi possível recuperar os itens deste pedido.
             </div>
 
@@ -55,8 +55,8 @@
                         <span class="font-bold text-white text-sm leading-tight line-clamp-2" :class="{'line-through text-surface-500': !item.isAvailable}">
                             {{ item.qty }}x {{ item.name }}
                         </span>
-                        <span class="font-mono font-bold text-sm ml-2" :class="item.isAvailable ? 'text-white' : 'text-surface-600'">
-                            R$ {{ formatMoney(item.currentPrice * item.qty) }}
+                        <span class="font-bold text-sm ml-2" :class="item.isAvailable ? 'text-white' : 'text-surface-600'">
+                            {{ formatCurrency(item.currentPrice * item.qty) }}
                         </span>
                     </div>
 
@@ -66,10 +66,10 @@
                         </div>
                     </div>
 
-                    <div v-if="!item.isAvailable" class="mt-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
+                    <div v-if="!item.isAvailable" class="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
                         <i class="fa-solid fa-ban"></i> Indisponível no momento
                     </div>
-                    <div v-else-if="item.priceChanged" class="mt-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded">
+                    <div v-else-if="item.priceChanged" class="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded">
                         <i class="fa-solid fa-triangle-exclamation"></i> Preço alterado
                     </div>
                 </div>
@@ -98,21 +98,19 @@
 import { ref, computed } from 'vue';
 import { useCartStore } from '@/stores/cart-store';
 import { useMenuStore } from '@/stores/menu-store';
+import { useFormat } from '@/composables/useFormat'; 
 import api from '@/services/api';
 import { notify } from '@/services/notify';
 import Dialog from 'primevue/dialog';
 
 const cartStore = useCartStore();
 const menuStore = useMenuStore();
+const { formatCurrency } = useFormat(); 
 
 const isOpen = ref(false);
 const isLoading = ref(false);
 const items = ref([]);
 
-// Formatação
-const formatMoney = (val) => parseFloat(val || 0).toFixed(2).replace('.', ',');
-
-// Computados
 const selectedCount = computed(() => items.value.filter(i => i.selected && i.isAvailable).length);
 const totalSelected = computed(() => {
     return items.value
@@ -120,32 +118,25 @@ const totalSelected = computed(() => {
         .reduce((acc, item) => acc + (item.currentPrice * item.qty), 0);
 });
 
-// Abertura do Modal
 const open = async (orderId) => {
     isOpen.value = true;
     isLoading.value = true;
     items.value = [];
 
     try {
-        // 1. Garante que temos o menu atualizado para checar estoque/preço
         if (menuStore.categories.length === 0) {
             await menuStore.fetchMenu();
         }
 
-        // 2. Busca os itens do pedido original
         const { data } = await api.get(`/order-details/${orderId}`);
         
         if (data.success && data.items) {
-            // 3. Processa e valida cada item
             items.value = data.items.map(orderItem => {
-                // Tenta encontrar o produto no menu atual
-                // Flattening: Categorias -> Produtos
                 let currentProduct = null;
                 
-                // Varre categorias e subcategorias
                 for (const cat of menuStore.categories) {
                     if (cat.products) {
-                        const found = cat.products.find(p => p.name === orderItem.name); // Match por nome é mais seguro se IDs mudarem, mas ID é ideal
+                        const found = cat.products.find(p => p.name === orderItem.name); 
                         if (found) { currentProduct = found; break; }
                     }
                     if (cat.children) {
@@ -156,12 +147,8 @@ const open = async (orderId) => {
                     }
                 }
 
-                // Estado Inicial
                 const isAvailable = !!currentProduct && currentProduct.is_available;
                 
-                // Recalcula preço (Preço atual do produto + soma dos modificadores)
-                // Nota: Modificadores complexos são difíceis de validar 100%. 
-                // Assumimos o preço do modificador antigo, mas usamos o preço base atual.
                 let currentPrice = 0;
                 let priceChanged = false;
 
@@ -172,7 +159,6 @@ const open = async (orderId) => {
                     }
                     currentPrice = parseFloat(currentProduct.price) + modsTotal;
                     
-                    // Verifica se mudou em relação ao histórico
                     const oldTotal = parseFloat(orderItem.line_total) / orderItem.qty;
                     if (Math.abs(currentPrice - oldTotal) > 0.1) priceChanged = true;
                 }
@@ -181,9 +167,9 @@ const open = async (orderId) => {
                     ...orderItem,
                     currentPrice: currentProduct ? currentPrice : 0,
                     isAvailable: isAvailable,
-                    selected: isAvailable, // Seleciona automaticamente se disponível
+                    selected: isAvailable, 
                     priceChanged: priceChanged,
-                    productId: currentProduct ? currentProduct.id : null // ID atual para adicionar ao carrinho
+                    productId: currentProduct ? currentProduct.id : null 
                 };
             });
         }
@@ -206,22 +192,21 @@ const confirmReorder = () => {
     
     let addedCount = 0;
     toAdd.forEach(item => {
-        // Monta o objeto compatível com cartStore.addItem
         const cartItem = {
-            id: item.productId, // Usa o ID atual recuperado do menu
+            id: item.productId, 
             name: item.name,
-            price: parseFloat(item.currentPrice), // Usa o preço recalculado
+            price: parseFloat(item.currentPrice), 
             qty: item.qty,
-            image: null, // Opcional
+            image: null, 
             modifiers: item.modifiers || [],
-            uniqueId: Date.now() + Math.random() // Novo ID único
+            uniqueId: Date.now() + Math.random() 
         };
         cartStore.items.push(cartItem);
         addedCount++;
     });
 
     if (addedCount > 0) {
-        cartStore.isOpen = true; // Abre o carrinho
+        cartStore.isOpen = true; 
         notify('success', 'Adicionado', `${addedCount} itens enviados ao carrinho.`);
         isOpen.value = false;
     }

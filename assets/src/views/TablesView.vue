@@ -1,7 +1,7 @@
 <template>
-<div class="grid grid-cols-1 xl:grid-cols-[1fr_auto] gap-4 w-full h-full">
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 w-full h-full">
         
-    <div class="relative bg-surface-900 border border-surface-800 rounded-3xl shadow-xl overflow-hidden flex flex-col transition-all duration-300">
+    <div class="relative bg-surface-1 rounded-[24px] overflow-hidden flex flex-col transition-all duration-300 xl:col-span-2">
         
         <TableGrid @request-new-account="onRequestNewAccount" />
 
@@ -10,11 +10,11 @@
             v-model:visible="showAccountsModal" 
             :session-id="targetTable.sessionId"
             :table-number="targetTable.number"
-            @open-payment="handleOpenPayment"
+            @account-selected="handleAccountSelection"
         />
     </div>
 
-    <div class="hidden xl:flex flex-col w-52 bg-surface-900 border border-surface-800 rounded-3xl shadow-xl overflow-hidden h-full">
+    <div class="hidden xl:flex flex-col bg-surface-1 rounded-[24px] overflow-hidden h-full xl:col-span-1">
         <ActivityFeed />
     </div>
 
@@ -37,27 +37,26 @@ const targetTable = ref(null);
 
 const onRequestNewAccount = (table) => {
     targetTable.value = table;
-    
-    // --- CORREÇÃO "MODO GARÇOM" ---
-    // Injetamos o ID na store para que as funções globais (como createAccount) saibam onde estamos
     if (table && table.sessionId) {
+        // Prepara a store mas não redireciona ainda
         sessionStore.sessionId = table.sessionId;
         sessionStore.identifier = table.number;
-        // Não definimos sessionType para evitar redirecionamentos automáticos indesejados
+        sessionStore.sessionType = 'table'; // Garante o tipo
     }
-    
     showAccountsModal.value = true;
 };
 
-const handleOpenPayment = async ({ accountName, amount }) => {
+// NOVA FUNÇÃO: Gerencia o clique no modal
+const handleAccountSelection = (accountName) => {
     if (!targetTable.value) return;
 
-    await sessionStore.resumeSession(targetTable.value.sessionId, targetTable.value.number, false);
+    // 1. Configura a sessão
+    sessionStore.resumeSession(targetTable.value.sessionId, targetTable.value.number, false);
     
-    if (accountName && accountName !== 'all') {
-        sessionStore.setAccount(accountName);
-    }
+    // 2. Define a sub-conta (Ex: "João")
+    sessionStore.setAccount(accountName);
 
-    router.push({ path: '/staff/pdv', query: { mode: 'checkout' } });
+    // 3. Vai para o PDV
+    router.push('/staff/pdv');
 };
 </script>

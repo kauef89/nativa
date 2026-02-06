@@ -3,69 +3,48 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 class Nativa_Session_Log {
 
-    private $table_name;
-
-    public function __construct() {
-        global $wpdb;
-        $this->table_name = $wpdb->prefix . 'nativa_session_logs';
-    }
-
-    public function init() {
-        $this->create_table();
-    }
-
-    public function create_table() {
-        global $wpdb;
-        $charset_collate = $wpdb->get_charset_collate();
-
-        $sql = "CREATE TABLE $this->table_name (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            session_id bigint(20) NOT NULL,
-            type varchar(50) NOT NULL, /* order, cancel, swap, payment */
-            description text NOT NULL,
-            author_id bigint(20) NOT NULL,
-            author_name varchar(100) DEFAULT NULL,
-            meta_json longtext DEFAULT NULL, /* Para guardar detalhes da troca {old, new} */
-            status varchar(50) DEFAULT 'completed', /* pending (para aprovação), completed, rejected */
-            approver_name varchar(100) DEFAULT NULL,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY  (id),
-            KEY session_id (session_id)
-        ) $charset_collate;";
-
-        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-        dbDelta( $sql );
-    }
-
+    /**
+     * Cria um registro de log/atividade
+     */
     public function log( $session_id, $type, $description, $meta = [], $status = 'completed' ) {
         global $wpdb;
-        $user_id = get_current_user_id();
-        $user = get_userdata( $user_id );
-        $author_name = $user ? ($user->first_name ?: $user->display_name) : 'Sistema';
+        $table_name = $wpdb->prefix . 'nativa_session_logs';
 
-        return $wpdb->insert( $this->table_name, array(
+        $user_id = get_current_user_id();
+        $user_info = get_userdata($user_id);
+        
+        // Se for usuário logado, pega o nome, senão 'Sistema'
+        $created_by = $user_info ? ($user_info->first_name ?: $user_info->display_name) : 'Sistema/Cliente';
+
+        $data = [
             'session_id'  => $session_id,
             'type'        => $type,
             'description' => $description,
-            'author_id'   => $user_id,
-            'author_name' => $author_name,
-            'meta_json'   => !empty($meta) ? json_encode($meta) : null,
-            'status'      => $status,
+            'meta_json'   => json_encode($meta),
+            'status'      => $status, // 'pending', 'approved', 'rejected', 'completed'
+            'created_by'  => $created_by,
             'created_at'  => current_time('mysql')
-        ));
-    }
+        ];
 
-    public function get_logs( $session_id ) {
-        global $wpdb;
-        $results = $wpdb->get_results( $wpdb->prepare( 
-            "SELECT * FROM $this->table_name WHERE session_id = %d ORDER BY created_at DESC", 
-            $session_id 
-        ));
-        
-        // Decodifica o JSON para o Frontend
-        foreach ($results as $row) {
-            $row->meta = $row->meta_json ? json_decode($row->meta_json, true) : [];
+        $format = ['%d', '%s', '%s', '%s', '%s', '%s', '%s'];
+
+        $wpdb->insert( $table_name, $data, $format );
+        $log_id = $wpdb->insert_id;
+
+        // --- GATILHO DE NOTIFICAÇÃO (NOVO) ---
+        // Se for uma solicitação pendente (precisa de aprovação do gerente)
+        if ( $status === 'pending' ) {
+            if ( class_exists('Nativa_Notification_Service') ) {
+                Nativa_Notification_Service::notify_staff_activity( 
+                    $log_id, 
+                    $type, 
+                    $description,
+                    $session_id
+                );
+            }
         }
-        return $results;
+        // -------------------------------------
+
+        return $log_id;
     }
 }

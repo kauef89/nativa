@@ -9,10 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 class Nativa_OneSignal {
 
     /**
-     * Envia notificação para o Staff (Gerentes, Cozinha, etc)
-     * @param string $message A mensagem a ser exibida
-     * @param array $data Dados adicionais (JSON) para lógica do frontend (ex: {type: 'new_order'})
-     * @param string $segment O segmento alvo no OneSignal (Default: 'All' ou 'Staff')
+     * Envia para Staff (Segmentos)
      */
     public static function send( $message, $data = [], $segment = 'All' ) {
         $fields = array(
@@ -20,17 +17,21 @@ class Nativa_OneSignal {
             'contents'          => array( "en" => $message, "pt" => $message ),
             'data'              => $data
         );
+
+        if ( !empty($data['heading']) ) {
+            $fields['headings'] = array( "en" => $data['heading'], "pt" => $data['heading'] );
+        } else {
+            $fields['headings'] = array( "en" => "Nativa", "pt" => "Nativa" );
+        }
         
         self::make_request( $fields );
     }
 
     /**
      * Envia notificação para um Cliente específico
-     * @param string $player_id O ID único do dispositivo do cliente (salvo na sessão)
-     * @param string $message A mensagem
-     * @param array $data Dados adicionais
+     * CORREÇÃO: Agora respeita o título (heading) enviado no $data
      */
-    public static function send_to_client( $player_id, $message, $data = [] ) {
+    public static function send_to_client( $player_id, $message, $data = [], $url = null ) {
         if ( empty( $player_id ) ) return;
 
         $fields = array(
@@ -39,38 +40,65 @@ class Nativa_OneSignal {
             'data'               => $data
         );
 
+        // --- CORREÇÃO AQUI ---
+        // Verifica se há um título personalizado nos dados, senão usa o padrão
+        if ( !empty($data['heading']) ) {
+            $fields['headings'] = array( "en" => $data['heading'], "pt" => $data['heading'] );
+        } else {
+            $fields['headings'] = array( "en" => "Atualização do Pedido", "pt" => "Atualização do Pedido" );
+        }
+        // ---------------------
+
+        if ( $url ) {
+            $fields['url'] = $url;
+        }
+
         self::make_request( $fields );
     }
 
-    /**
-     * Executa a requisição cURL para a API do OneSignal
-     */
+    private static function get_api_key() {
+        if ( defined('NATIVA_ONESIGNAL_REST_API_KEY') ) {
+            return NATIVA_ONESIGNAL_REST_API_KEY;
+        }
+        if ( defined('NATIVA_ONESIGNAL_API_KEY') ) {
+            return NATIVA_ONESIGNAL_API_KEY;
+        }
+        return '';
+    }
+
     private static function make_request( $fields ) {
-        // Injeta o App ID automaticamente
         $fields['app_id'] = defined('NATIVA_ONESIGNAL_APP_ID') ? NATIVA_ONESIGNAL_APP_ID : '';
+        $rest_key = self::get_api_key();
         
-        if ( empty($fields['app_id']) ) {
-            error_log('Nativa OneSignal: APP ID não configurado.');
+        if ( empty($fields['app_id']) || empty($rest_key) ) {
+            error_log('🔴 [OneSignal] Chaves não configuradas.');
             return;
         }
 
-        $fields = json_encode( $fields );
+        $json_fields = json_encode( $fields );
+        
+        // Logs para Debug (pode comentar depois)
+        // error_log("🚀 [OneSignal] Enviando Payload: " . $json_fields);
 
         $ch = curl_init();
         curl_setopt( $ch, CURLOPT_URL, "https://onesignal.com/api/v1/notifications" );
         curl_setopt( $ch, CURLOPT_HTTPHEADER, array(
             'Content-Type: application/json; charset=utf-8',
-            'Authorization: Basic ' . (defined('NATIVA_ONESIGNAL_API_KEY') ? NATIVA_ONESIGNAL_API_KEY : '')
+            'Authorization: Basic ' . $rest_key
         ));
         curl_setopt( $ch, CURLOPT_RETURNTRANSFER, TRUE );
         curl_setopt( $ch, CURLOPT_HEADER, FALSE );
         curl_setopt( $ch, CURLOPT_POST, TRUE );
-        curl_setopt( $ch, CURLOPT_POSTFIELDS, $fields );
+        curl_setopt( $ch, CURLOPT_POSTFIELDS, $json_fields );
         curl_setopt( $ch, CURLOPT_SSL_VERIFYPEER, FALSE );
 
         $response = curl_exec( $ch );
-        curl_close( $ch );
+        
+        if ($response === false) {
+             error_log("🔴 [OneSignal Error] " . curl_error($ch));
+        }
 
+        curl_close( $ch );
         return $response;
     }
 }

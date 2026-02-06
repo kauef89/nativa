@@ -9,12 +9,13 @@
         </router-view>
     </div>
 
-<SharedBottomNav class="md:hidden" />
-  </div>
+    </div>
 </template>
 
 <script setup>
-import SharedBottomNav from '@/components/shared/SharedBottomNav.vue';</script>
+// REMOVIDO: import SharedBottomNav from '@/components/shared/SharedBottomNav.vue';
+</script>
+
 <style scoped>
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }

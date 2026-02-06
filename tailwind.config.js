@@ -1,48 +1,53 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./index.html", "./assets/src/**/*.{vue,js,ts,jsx,tsx}"],
+  content: [
+    "./index.html",
+    "./assets/src/**/*.{vue,js,ts,jsx,tsx}",
+    "./src/**/*.{vue,js,ts,jsx,tsx}",
+  ],
   theme: {
     extend: {
       colors: {
+        // Paleta Primary: Blue (Azul Padrão)
         primary: {
-          50: "#f0fdf9",
-          100: "#ccfbf1",
-          200: "#99f6e4",
-          300: "#5eead4",
-          400: "#2dd4bf",
-          500: "#b7ffe7", // <--- A NOVA COR (Menta Neon)
-          600: "#88dbc3", // Um tom mais escuro para bordas/detalhes
-          700: "#0f766e",
-          800: "#115e59",
-          900: "#134e4a",
-          950: "#042f2e",
+          50: "#eff6ff",
+          100: "#dbeafe",
+          200: "#bfdbfe",
+          300: "#93c5fd",
+          400: "#60a5fa",
+          500: "#3b82f6", // Azul Vibrante
+          600: "#2563eb",
+          700: "#1d4ed8",
+          800: "#1e40af",
+          900: "#1e3a8a",
+          950: "#172554",
         },
+
+        // Surfaces Material You (Stone - Quente)
+        "surface-base": "#0c0a09", // Stone 950
+        "surface-1": "#1c1917", // Stone 900
+        "surface-2": "#292524", // Stone 800
+        "surface-3": "#44403c", // Stone 700
+        "surface-4": "#57534e", // Stone 600
+
+        // Compatibilidade Legada (Escala Stone)
         surface: {
           0: "#ffffff",
-          50: "#fafafa",
-          100: "#f4f4f5",
-          200: "#e4e4e7",
-          300: "#d4d4d8",
-          400: "#a1a1aa",
-          500: "#71717a",
-          600: "#52525b",
-          700: "#3f3f46",
-          800: "#27272a",
-          900: "#18181b",
-          950: "#09090b",
+          50: "#fafaf9",
+          100: "#f5f5f4",
+          200: "#e7e5e4",
+          300: "#d6d3d1",
+          400: "#a8a29e",
+          500: "#78716c",
+          600: "#57534e",
+          700: "#44403c",
+          800: "#292524",
+          900: "#1c1917",
+          950: "#0c0a09",
         },
       },
       fontFamily: {
         sans: ["Nunito", "sans-serif"],
-      },
-      keyframes: {
-        fadeIn: {
-          "0%": { opacity: "0" },
-          "100%": { opacity: "1" },
-        },
-      },
-      animation: {
-        "fade-in": "fadeIn 0.3s ease-in-out",
       },
     },
   },

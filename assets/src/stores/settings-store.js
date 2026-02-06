@@ -4,20 +4,23 @@ import { notify } from "@/services/notify";
 
 export const useSettingsStore = defineStore("settings", {
   state: () => ({
-    hours: null,
+    // Inicializa com estrutura válida para evitar "undefined property"
+    hours: {
+      general: {},
+      delivery: {},
+      pickup: {},
+    },
     status: { general: false, delivery: false, pickup: false },
-    // DADOS DE CONTATO (O que estava faltando)
     contact: {
       whatsapp: "",
       address: "",
       instagram: "",
-      google_reviews: "", // <--- NOVO
+      google_reviews: "",
     },
     isLoading: false,
   }),
 
   actions: {
-    // 1. Busca TUDO (Horários + Geral) para a tela de Admin
     async fetchAllSettings() {
       this.isLoading = true;
       try {
@@ -35,20 +38,21 @@ export const useSettingsStore = defineStore("settings", {
       }
     },
 
-    // 2. Busca APENAS dados públicos (Para o ClientHome)
-    // OBS: Renomeei para 'fetchPublicSettings' para ficar claro
     async fetchPublicSettings() {
       try {
         const { data } = await api.get("/settings/public");
         if (data.success) {
-          this.contact = data.contact;
+          if (data.contact) this.contact = data.contact;
+          // Garante a mesclagem correta dos horários
+          if (data.hours) {
+            this.hours = { ...this.hours, ...data.hours };
+          }
         }
       } catch (e) {
-        console.log("Usando configurações padrão de contato");
+        console.log("Usando configurações padrão.");
       }
     },
 
-    // 3. Salva TUDO
     async saveAll() {
       try {
         await api.post("/settings/hours", { hours: this.hours });

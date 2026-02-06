@@ -1,6 +1,9 @@
 import { defineStore } from "pinia";
 import api from "../services/api";
 import { notify } from "@/services/notify";
+import { PrinterService } from "@/services/printer-service";
+// Importação do som (certifique-se que o arquivo existe neste caminho)
+import notificationSound from "@/sounds/notification.mp3";
 
 export const useDeliveryStore = defineStore("delivery", {
   state: () => ({
@@ -31,6 +34,11 @@ export const useDeliveryStore = defineStore("delivery", {
     orders: [],
     isLoadingOrders: false,
     lastFetch: null,
+
+    // --- 3. SISTEMA DE NOTIFICAÇÃO SONORA ---
+    audioAlert: new Audio(notificationSound),
+    alertInterval: null,
+    isViewingDeliveryPage: false, // Controla se o usuário já está vendo os pedidos
   }),
 
   getters: {
@@ -44,29 +52,94 @@ export const useDeliveryStore = defineStore("delivery", {
 
     finalFee: (state) => state.deliveryFee,
 
+    // --- CORREÇÃO: Filtra apenas Delivery e Pickup ---
+
     pendingOrders: (state) =>
-      state.orders.filter((o) =>
-        ["novo", "pendente", "wc-pending"].includes(o.status.toLowerCase()),
+      state.orders.filter(
+        (o) =>
+          ["novo", "pendente", "wc-pending", "new"].includes(
+            o.status.toLowerCase(),
+          ) && ["delivery", "pickup"].includes(o.modality),
       ),
+
     kitchenOrders: (state) =>
-      state.orders.filter((o) =>
-        ["preparando", "wc-processing"].includes(o.status.toLowerCase()),
+      state.orders.filter(
+        (o) =>
+          ["preparando", "wc-processing", "preparing"].includes(
+            o.status.toLowerCase(),
+          ) && ["delivery", "pickup"].includes(o.modality),
       ),
+
     deliveringOrders: (state) =>
-      state.orders.filter((o) =>
-        ["entrega", "saiu para entrega", "enviado", "em rota"].includes(
-          o.status.toLowerCase(),
-        ),
+      state.orders.filter(
+        (o) =>
+          [
+            "entrega",
+            "saiu para entrega",
+            "enviado",
+            "em rota",
+            "delivering",
+          ].includes(o.status.toLowerCase()) &&
+          ["delivery", "pickup"].includes(o.modality),
       ),
+
     completedOrders: (state) =>
-      state.orders.filter((o) =>
-        ["concluido", "entregue", "wc-completed"].includes(
-          o.status.toLowerCase(),
-        ),
+      state.orders.filter(
+        (o) =>
+          [
+            "concluido",
+            "entregue",
+            "wc-completed",
+            "finished",
+            "paid",
+          ].includes(o.status.toLowerCase()) &&
+          ["delivery", "pickup"].includes(o.modality),
       ),
+
+    // Contagem para o Badge e Som (Também filtrado)
+    newOrdersCount: (state) =>
+      state.orders.filter(
+        (o) =>
+          ["novo", "pendente", "wc-pending", "new"].includes(
+            o.status.toLowerCase(),
+          ) && ["delivery", "pickup"].includes(o.modality),
+      ).length,
   },
 
   actions: {
+    // --- ACTIONS DE SOM ---
+
+    startAlertLoop() {
+      // Se já estiver tocando ou se o usuário já estiver na tela, ignora
+      if (this.alertInterval || this.isViewingDeliveryPage) return;
+
+      // Toca a primeira vez imediatamente
+      this.playNotificationSound();
+
+      // Configura repetição a cada 30 segundos
+      this.alertInterval = setInterval(() => {
+        this.playNotificationSound();
+      }, 30000);
+    },
+
+    stopAlertLoop() {
+      if (this.alertInterval) {
+        clearInterval(this.alertInterval);
+        this.alertInterval = null;
+      }
+    },
+
+    playNotificationSound() {
+      // Reinicia o tempo para garantir que toque do início
+      this.audioAlert.currentTime = 0;
+      this.audioAlert.play().catch((e) => {
+        console.warn(
+          "Autoplay bloqueado pelo navegador (interação necessária):",
+          e,
+        );
+      });
+    },
+
     // --- ACTIONS DE ENDEREÇO ---
 
     async searchStreets(query) {
@@ -181,6 +254,16 @@ export const useDeliveryStore = defineStore("delivery", {
         if (data.success) {
           this.orders = data.orders;
           this.lastFetch = new Date();
+
+          // LÓGICA DO ALERTA SONORO
+          // 1. Se tem novos pedidos E não estou na tela de delivery -> Toca Som
+          if (this.newOrdersCount > 0 && !this.isViewingDeliveryPage) {
+            this.startAlertLoop();
+          }
+          // 2. Se não tem novos pedidos (alguém aceitou em outro lugar) -> Para Som
+          else if (this.newOrdersCount === 0) {
+            this.stopAlertLoop();
+          }
         }
       } catch (e) {
         console.error("Erro ao buscar pedidos delivery", e);
@@ -216,6 +299,11 @@ export const useDeliveryStore = defineStore("delivery", {
             `Pedido #${orderId} atualizado.`,
           );
           this.orders[orderIndex].status = data.new_status;
+
+          // Revalida se ainda precisa tocar o som (caso tenha aceitado o último pedido)
+          if (this.newOrdersCount === 0) {
+            this.stopAlertLoop();
+          }
         } else {
           throw new Error(data.message);
         }
@@ -224,8 +312,6 @@ export const useDeliveryStore = defineStore("delivery", {
         notify("error", "Erro", "Não foi possível atualizar o status.");
       }
     },
-
-    // --- AGORA DENTRO DAS ACTIONS ---
 
     async updateOrderAddress(orderId, addressData) {
       try {
@@ -265,6 +351,35 @@ export const useDeliveryStore = defineStore("delivery", {
         notify("error", "Erro", "Não foi possível cancelar.");
       }
       return false;
+    },
+
+    async createOrder(orderData) {
+      try {
+        const { data } = await api.post("/create-delivery-order", orderData);
+        if (data.success) {
+          notify("success", "Sucesso", "Pedido iniciado!");
+          return data.session_id;
+        }
+      } catch (e) {
+        notify(
+          "error",
+          "Erro",
+          e.response?.data?.message || "Falha ao criar pedido.",
+        );
+      }
+      return null;
+    },
+
+    async printOrder(orderId) {
+      try {
+        const { data } = await api.get(`/order-details/${orderId}`);
+        if (data.success) {
+          PrinterService.printDeliveryReport(data);
+          notify("success", "Imprimindo", "Relatório enviado para impressora.");
+        }
+      } catch (e) {
+        notify("error", "Erro", "Falha ao buscar dados para impressão.");
+      }
     },
   },
 });
